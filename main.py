@@ -1,6 +1,7 @@
 import asyncio
 import os
 import json
+import re
 from pyrogram import Client, filters, types, errors
 from pyromod import listen
 from dotenv import load_dotenv
@@ -36,85 +37,109 @@ def load_db():
     return {}
 
 main_keyboard = types.ReplyKeyboardMarkup(
-    [[types.KeyboardButton("📱 اضف رقم"), types.KeyboardButton("🤖 زر اوتو مسج")],
-     [types.KeyboardButton("📊 الاكاونتات المضافة"), types.KeyboardButton("🗑️ مسح كروب")]],
+    [[types.KeyboardButton("📱 اضف رقم"), types.KeyboardButton("🤖 اوتو مسج")],
+     [types.KeyboardButton("📊 الاكاونتات المضافة"), types.KeyboardButton("📁 الكروبات المضافة")]],
     resize_keyboard=True,
     is_persistent=True
 )
 
-async def start_media_catcher(user_client, phone, owner_id):
-    @user_client.on_message(filters.private & ~filters.me & (filters.photo | filters.video | filters.voice))
-    async def catcher(client, msg):
-        if not active_sessions.get(phone, {}).get("status"): return
-        is_timer = False
-        if (msg.photo or msg.video) and msg.ttl_seconds: is_timer = True
-        elif msg.voice: is_timer = True
-
-        if is_timer:
-            try:
-                path = await msg.download()
-                user = await client.get_users(msg.from_user.id)
-                name = user.first_name if user.first_name else "اسم مفقود"
-                if msg.voice:
-                    await bot.send_voice(owner_id, path, caption=f"بصمة مؤقته من {name}")
-                elif msg.photo:
-                    await bot.send_photo(owner_id, path, caption=f"صورة مؤقته من {name}")
-                elif msg.video:
-                    await bot.send_video(owner_id, path, caption=f"فيديو مؤقت من {name}")
-                if os.path.exists(path): os.remove(path)
-            except: pass
-
-@bot.on_message(filters.private & ~filters.regex("📱 اضف رقم|🤖 زر اوتو مسج|📊 الاكاونتات المضافة|🗑️ مسح كروب"))
+@bot.on_message(filters.private & ~filters.regex("📱 اضف رقم|🤖 اوتو مسج|📊 الاكاونتات المضافة|📁 الكروبات المضافة"))
 async def start_cmd(client, message):
-    await message.reply("اهلا وسهلا بالبوت المصمم\nبدون غلط", reply_markup=main_keyboard)
+    await message.reply("اهلا وسهلا بالبوت المصمم\nبدون غلط", reply_markup=main_keyboard, quote=True)
 
 @bot.on_message(filters.text & filters.regex("📱 اضف رقم"))
 async def add_session(client, message):
     try:
-        p = await client.ask(message.chat.id, "دز الرقم مع مفتاح الدولة\nمثلا 966...")
-        phone = p.text.strip().replace("+", "")
-        id_m = await client.ask(message.chat.id, "دز الايبي ايدي\nمالتك")
-        u_api_id = int(id_m.text)
-        hash_m = await client.ask(message.chat.id, "دز الايبي هاش\nمالتك")
-        u_api_hash = hash_m.text
-        new_c = Client(f"sessions/{phone}", api_id=u_api_id, api_hash=u_api_hash)
+        while True:
+            p = await client.ask(message.chat.id, "دز الرقم مع مفتاح الدولة\nمثلا 966...", reply_to_message_id=message.id)
+            phone = p.text.strip().replace("+", "").replace(" ", "")
+            if phone.isdigit() and len(phone) > 8:
+                break
+            await message.reply("دز رقم عمري", quote=True)
+
+        while True:
+            id_m = await client.ask(message.chat.id, "دز الايبي ايدي\nمالتك", reply_to_message_id=p.id)
+            if id_m.text.strip().isdigit():
+                u_api_id = int(id_m.text.strip())
+                break
+            await message.reply("دز رقم عمري", quote=True)
+
+        while True:
+            hash_m = await client.ask(message.chat.id, "دز الايبي هاش\nمالتك", reply_to_message_id=id_m.id)
+            u_api_hash = hash_m.text.strip()
+            if len(u_api_hash) == 32 and re.match(r'^[a-fA-F0-9]+$', u_api_hash):
+                break
+            await message.reply("دز رقم عمري", quote=True)
+        
+        new_c = Client(f"sessions/{phone}", api_id=u_api_id, api_hash=u_api_hash,
+                       device_model="PC 64bit", system_version="Windows 11", app_version="4.15.2 x64")
+        
         await new_c.connect()
         c_hash = await new_c.send_code(phone)
-        code_m = await client.ask(message.chat.id, "دز الكود الوصلك\nهسة")
+        
+        while True:
+            code_m = await client.ask(message.chat.id, "دز الكود الوصلك\nهسة", reply_to_message_id=hash_m.id)
+            clean_code = re.sub(r'\D', '', code_m.text)
+            if clean_code and len(clean_code) >= 5:
+                final_code = clean_code[:5]
+                break
+            await message.reply("دز رقم عمري", quote=True)
+        
         try:
-            await new_c.sign_in(phone, c_hash.phone_code_hash, code_m.text)
+            await new_c.sign_in(phone, c_hash.phone_code_hash, final_code)
         except errors.SessionPasswordNeeded:
-            pw = await client.ask(message.chat.id, "دز الباسورد 2FA\nمالتك")
+            pw = await client.ask(message.chat.id, "دز الباسورد 2FA\nمالتك", reply_to_message_id=code_m.id)
             await new_c.check_password(pw.text)
+            
         active_sessions[phone] = {"client": new_c, "status": True, "api_id": u_api_id, "api_hash": u_api_hash}
         save_db()
-        asyncio.create_task(start_media_catcher(new_c, phone, message.chat.id))
-        await message.reply("اشتغل بدون مشاكل\nبرافو عليك ✅..", reply_markup=main_keyboard)
-    except:
-        await message.reply("ماشتغل معلسف المعلومات\nغلط ❌..", reply_markup=main_keyboard)
+        await message.reply("اشتغل بدون مشاكل\nبرافو عليك ✅..", reply_markup=main_keyboard, quote=True)
+    except Exception:
+        await message.reply("ماشتغل معلسف المعلومات\nغلط ❌..", reply_markup=main_keyboard, quote=True)
 
-@bot.on_message(filters.text & filters.regex("🤖 زر اوتو مسج"))
+@bot.on_message(filters.text & filters.regex("🤖 اوتو مسج"))
 async def auto_msg_setup(client, message):
-    grp_ask = await client.ask(message.chat.id, "اعزل كروب تريدة من ضمن\nطاقم كروباتك")
-    msg_ask = await client.ask(message.chat.id, "دز مسج تريد يضل\nاوتو نشر")
-    chat_id_val = grp_ask.text
+    if not active_sessions:
+        return await message.reply("ضيف رقم على الأقل علمود تكدر\nتستعمل البوت بالشكل الكامل", quote=True)
+    grp_ask = await client.ask(message.chat.id, "اعزل كروب تريدة من ضمن\nطاقم كروباتك", reply_to_message_id=message.id)
+    msg_ask = await client.ask(message.chat.id, "دز المسج تريد يضل\nاوتو نشر", reply_to_message_id=grp_ask.id)
     await message.reply("ماهو نوع الفاصل الزمني", reply_markup=types.InlineKeyboardMarkup([
-        [types.InlineKeyboardButton("د", callback_data=f"tmin_{chat_id_val}_{msg_ask.text}"), 
-         types.InlineKeyboardButton("س", callback_data=f"thrs_{chat_id_val}_{msg_ask.text}")]
-    ]))
+        [types.InlineKeyboardButton("د", callback_data=f"tmin_{grp_ask.text}_{msg_ask.text}"), 
+         types.InlineKeyboardButton("س", callback_data=f"thrs_{grp_ask.text}_{msg_ask.text}")]
+    ]), quote=True)
+
+@bot.on_message(filters.text & filters.regex("📊 الاكاونتات المضافة"))
+async def list_accs(client, message):
+    if not active_sessions:
+        return await message.reply("ضيف رقم على الأقل علمود تكدر\nتستعمل البوت بالشكل الكامل", quote=True)
+    btns = [[types.InlineKeyboardButton(f"{p} {'✅' if v['status'] else '❌'}", callback_data=f"tog_{p}")] for p, v in active_sessions.items()]
+    btns.append([types.InlineKeyboardButton("🗑️ مسح رقم", callback_data="del_acc_start")])
+    await message.reply("الاكاونتات الشغالة", reply_markup=types.InlineKeyboardMarkup(btns), quote=True)
+
+@bot.on_message(filters.text & filters.regex("📁 الكروبات المضافة"))
+async def list_groups(client, message):
+    if not active_sessions:
+        return await message.reply("ضيف رقم على الأقل علمود تكدر\nتستعمل البوت بالشكل الكامل", quote=True)
+    if not post_data: 
+        return await message.reply("ماكو كروب مضاف هسة", quote=True)
+    btns = [[types.InlineKeyboardButton(k, callback_data=f"prep_del_{k}")] for k in post_data.keys()]
+    await message.reply("قائمة الكروبات المضافة:", reply_markup=types.InlineKeyboardMarkup(btns), quote=True)
 
 @bot.on_callback_query()
 async def handle_calls(client, cb):
     if cb.data.startswith("tmin_") or cb.data.startswith("thrs_"):
         parts = cb.data.split("_")
-        t_type, c_id, msg_text = parts[0], parts[1], parts[2]
-        if t_type == "tmin":
-            t = await client.ask(cb.message.chat.id, "دز كذا 00\nمثال صفرين: 54 دقيقة")
-        else:
-            t = await client.ask(cb.message.chat.id, "دز كذا 0:00 او كذا 00\nمثال صفرين: 12 مثال تلاث اصفار: 1:23")
-        post_data[c_id] = {"msg": msg_text, "interval": t.text}
-        save_db()
-        await client.send_message(cb.message.chat.id, f"ممتاز اصبح الفاصل الزمني\n{t.text}")
+        while True:
+            prompt = "دز كذا 00\nمثال صفرين: 54 دقيقة" if parts[0] == "tmin" else "دز كذا 0:00 او كذا 00\nمثال صفرين: 12 مثال تلاث اصفار: 1:23"
+            t = await client.ask(cb.message.chat.id, prompt, reply_to_message_id=cb.message.id)
+            clean_time = re.sub(r'\D', '', t.text)
+            if clean_time:
+                post_data[parts[1]] = {"msg": parts[2], "interval": t.text, "type": parts[0]}
+                save_db()
+                await client.send_message(cb.message.chat.id, f"ممتاز اصبح الفاصل الزمني\n{t.text}", reply_to_message_id=t.id)
+                break
+            await client.send_message(cb.message.chat.id, "دز رقم عمري", reply_to_message_id=t.id)
+
     elif cb.data.startswith("tog_"):
         phone = cb.data.split("_")[1]
         active_sessions[phone]["status"] = not active_sessions[phone]["status"]
@@ -122,53 +147,49 @@ async def handle_calls(client, cb):
         btns = [[types.InlineKeyboardButton(f"{p} {'✅' if v['status'] else '❌'}", callback_data=f"tog_{p}")] for p, v in active_sessions.items()]
         btns.append([types.InlineKeyboardButton("🗑️ مسح رقم", callback_data="del_acc_start")])
         await cb.edit_message_reply_markup(types.InlineKeyboardMarkup(btns))
+
     elif cb.data == "del_acc_start":
-        ask_p = await client.ask(cb.message.chat.id, "دز الرقم الراح\nينمسح")
+        ask_p = await client.ask(cb.message.chat.id, "دز الرقم الراح\nينمسح", reply_to_message_id=cb.message.id)
         p_to_del = ask_p.text.strip().replace("+", "")
         if p_to_del in active_sessions:
-            try: await active_sessions[p_to_del]["client"].stop()
-            except: pass
             del active_sessions[p_to_del]
             save_db()
-            await client.send_message(cb.message.chat.id, "تم مسح الرقم", reply_markup=main_keyboard)
+            await client.send_message(cb.message.chat.id, "تم مسح الرقم", reply_markup=main_keyboard, reply_to_message_id=ask_p.id)
+
     elif cb.data.startswith("prep_del_"):
-        key = cb.data.split("_")[2]
-        await cb.edit_message_reply_markup(types.InlineKeyboardMarkup([[types.InlineKeyboardButton("مسح", callback_data=f"conf_del_{key}")],[types.InlineKeyboardButton("عودة", callback_data="back_to_list")]]))
+        key = cb.data.split("prep_del_")[1]
+        await cb.edit_message_reply_markup(types.InlineKeyboardMarkup([
+            [types.InlineKeyboardButton("مسح 🗑️", callback_data=f"conf_del_{key}")],
+            [types.InlineKeyboardButton("🔙 عودة", callback_data="back_to_list")]
+        ]))
+
     elif cb.data.startswith("conf_del_"):
-        key = cb.data.split("_")[2]
-        if key in post_data: del post_data[key]
-        save_db()
-        await cb.message.delete()
+        key = cb.data.split("conf_del_")[1]
+        if key in post_data: 
+            del post_data[key]
+            save_db()
+        if not post_data:
+            await cb.edit_message_text("ماكو كروب مضاف هسة")
+        else:
+            btns = [[types.InlineKeyboardButton(k, callback_data=f"prep_del_{k}")] for k in post_data.keys()]
+            await cb.edit_message_reply_markup(types.InlineKeyboardMarkup(btns))
+
     elif cb.data == "back_to_list":
         btns = [[types.InlineKeyboardButton(k, callback_data=f"prep_del_{k}")] for k in post_data.keys()]
         await cb.edit_message_reply_markup(types.InlineKeyboardMarkup(btns))
-
-@bot.on_message(filters.text & filters.regex("📊 الاكاونتات المضافة"))
-async def list_accs(client, message):
-    if not active_sessions:
-        return await message.reply("ماكو اكاونتات\nمضافة", reply_markup=main_keyboard)
-    btns = [[types.InlineKeyboardButton(f"{p} {'✅' if v['status'] else '❌'}", callback_data=f"tog_{p}")] for p, v in active_sessions.items()]
-    btns.append([types.InlineKeyboardButton("🗑️ مسح رقم", callback_data="del_acc_start")])
-    await message.reply("الاكاونتات الشغالة", reply_markup=types.InlineKeyboardMarkup(btns))
-
-@bot.on_message(filters.text & filters.regex("🗑️ مسح كروب"))
-async def delete_group_list(client, message):
-    if not post_data: return
-    btns = [[types.InlineKeyboardButton(k, callback_data=f"prep_del_{k}")] for k in post_data.keys()]
-    await message.reply(" ", reply_markup=types.InlineKeyboardMarkup(btns))
 
 async def main():
     if not os.path.exists("sessions"): os.mkdir("sessions")
     await bot.start()
     db_accs = load_db()
     for p, v in db_accs.items():
-        cli = Client(f"sessions/{p}", api_id=v["api_id"], api_hash=v["api_hash"])
+        cli = Client(f"sessions/{p}", api_id=v["api_id"], api_hash=v["api_hash"], device_model="PC 64bit", system_version="Windows 11", app_version="4.15.2 x64")
         try:
             await cli.start()
             active_sessions[p] = {"client": cli, "status": v["status"], "api_id": v["api_id"], "api_hash": v["api_hash"]}
-            asyncio.create_task(start_media_catcher(cli, p, bot.me.id))
         except: pass
     await asyncio.sleep(float('inf'))
+
 
 if __name__ == "__main__":
     bot.run(main())
