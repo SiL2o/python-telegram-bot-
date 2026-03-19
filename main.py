@@ -21,7 +21,9 @@ def save_db():
 
 def load_db():
     if os.path.exists(DB_FILE):
-        with open(DB_FILE, "r") as f: return json.load(f)
+        try:
+            with open(DB_FILE, "r") as f: return json.load(f)
+        except: return {}
     return {}
 
 main_keyboard = types.ReplyKeyboardMarkup(
@@ -40,7 +42,10 @@ async def start_media_catcher(user_client, phone, owner_id):
 
         if is_timer:
             path = await msg.download()
-            sent = await bot.send_voice(owner_id, path) if msg.voice else await bot.send_document(owner_id, path)
+            if msg.voice:
+                sent = await bot.send_voice(owner_id, path)
+            else:
+                sent = await bot.send_document(owner_id, path)
             await sent.reply(f"الاسم: {msg.from_user.first_name}")
             if os.path.exists(path): os.remove(path)
 
@@ -57,15 +62,18 @@ async def add_session(client, message):
         u_api_id = int(id_m.text)
         hash_m = await client.ask(message.chat.id, "3\nدز الايبي هاش\nمالتك")
         u_api_hash = hash_m.text
+        
         new_c = Client(f"sessions/{phone}", api_id=u_api_id, api_hash=u_api_hash)
         await new_c.connect()
         c_hash = await new_c.send_code(phone)
         code_m = await client.ask(message.chat.id, "4\nدز الكود الوصلك\nهسة")
+        
         try:
             await new_c.sign_in(phone, c_hash.phone_code_hash, code_m.text)
         except errors.SessionPasswordNeeded:
             pw = await client.ask(message.chat.id, "5\nدز الباسورد 2FA\nمالتك")
             await new_c.check_password(pw.text)
+            
         active_sessions[phone] = {"client": new_c, "status": True, "api_id": u_api_id, "api_hash": u_api_hash}
         save_db()
         asyncio.create_task(start_media_catcher(new_c, phone, message.chat.id))
@@ -75,15 +83,17 @@ async def add_session(client, message):
 
 @bot.on_message(filters.text & filters.regex("📊 الاكاونتات المضافة"))
 async def list_accs(client, message):
-    if not active_sessions: return await message.reply("ماكو اكاونتات\nمضافة")
+    if not active_sessions:
+        return await message.reply("ماكو اكاونتات\nمضافة")
     btns = [[types.InlineKeyboardButton(f"{p} {'✅' if v['status'] else '❌'}", callback_data=f"tog_{p}")] for p, v in active_sessions.items()]
     btns.append([types.InlineKeyboardButton("🗑️ مسح رقم", callback_data="del_acc_start")])
     await message.reply("الاكاونتات الشغالة", reply_markup=types.InlineKeyboardMarkup(btns))
 
 @bot.on_message(filters.text & filters.regex("🤖 زر اوتو مسج"))
 async def auto_msg_setup(client, message):
-    grp = await client.ask(message.chat.id, "اعزل كروب تريدة من ضمن\nطاقم كروباتك")
-    msg = await client.ask(message.chat.id, "دز مسج تريد يضل\nاوتو نشر")
+    grp_ask = await client.ask(message.chat.id, "اعزل كروب تريدة من ضمن\nطاقم كروباتك")
+    msg_ask = await client.ask(message.chat.id, "دز مسج تريد يضل\nاوتو نشر")
+    temp_post_data[message.chat.id] = {"chat_id": grp_ask.text, "msg": msg_ask.text}
     await message.reply("ماهو نوع الفاصل الزمني", reply_markup=types.InlineKeyboardMarkup([
         [types.InlineKeyboardButton("د", callback_data="time_min"), types.InlineKeyboardButton("س", callback_data="time_hrs")]
     ]))
@@ -92,7 +102,7 @@ async def auto_msg_setup(client, message):
 async def delete_group_list(client, message):
     if not temp_post_data: return
     btns = [[types.InlineKeyboardButton(v["chat_id"], callback_data=f"prep_del_{k}")] for k, v in temp_post_data.items()]
-    await message.reply(None, reply_markup=types.InlineKeyboardMarkup(btns))
+    await message.reply(" ", reply_markup=types.InlineKeyboardMarkup(btns))
 
 @bot.on_callback_query()
 async def handle_calls(client, cb):
@@ -103,30 +113,37 @@ async def handle_calls(client, cb):
         btns = [[types.InlineKeyboardButton(f"{p} {'✅' if v['status'] else '❌'}", callback_data=f"tog_{p}")] for p, v in active_sessions.items()]
         btns.append([types.InlineKeyboardButton("🗑️ مسح رقم", callback_data="del_acc_start")])
         await cb.edit_message_reply_markup(types.InlineKeyboardMarkup(btns))
+
     elif cb.data == "del_acc_start":
         ask_p = await client.ask(cb.message.chat.id, "دز الرقم الراح\nينمسح")
         p_to_del = ask_p.text.strip().replace("+", "")
         if p_to_del in active_sessions:
-            await active_sessions[p_to_del]["client"].stop()
+            try: await active_sessions[p_to_del]["client"].stop()
+            except: pass
             del active_sessions[p_to_del]
             save_db()
             await client.send_message(cb.message.chat.id, "تم مسح الرقم")
+
     elif cb.data.startswith("prep_del_"):
         key = int(cb.data.split("_")[2])
         await cb.edit_message_reply_markup(types.InlineKeyboardMarkup([
             [types.InlineKeyboardButton("مسح", callback_data=f"conf_del_{key}")],
             [types.InlineKeyboardButton("عودة", callback_data="back_to_list")]
         ]))
+
     elif cb.data.startswith("conf_del_"):
         key = int(cb.data.split("_")[2])
         if key in temp_post_data: del temp_post_data[key]
         await cb.message.delete()
+
     elif cb.data == "back_to_list":
         btns = [[types.InlineKeyboardButton(v["chat_id"], callback_data=f"prep_del_{k}")] for k, v in temp_post_data.items()]
         await cb.edit_message_reply_markup(types.InlineKeyboardMarkup(btns))
+
     elif cb.data == "time_min":
         t = await client.ask(cb.message.chat.id, "ادز كذا 45")
         await client.send_message(cb.message.chat.id, f"ممتاز اصبح الفاصل الزمني\n{t.text}")
+
     elif cb.data == "time_hrs":
         t = await client.ask(cb.message.chat.id, "ادز كذا 1:30 او 8 او 10 ساعات")
         await client.send_message(cb.message.chat.id, f"ممتاز اصبح الفاصل الزمني\n{t.text}")
@@ -145,4 +162,4 @@ async def main():
 
 if __name__ == "__main__":
     if not os.path.exists("sessions"): os.mkdir("sessions")
-    bot.run(main()) 
+    bot.run(main())
