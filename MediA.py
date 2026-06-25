@@ -171,9 +171,9 @@ async def process_queue(user_id, chat_id):
                     clean_files.append(new_path)
 
         if clean_files:
-            await send_processed_files(chat_id, reply_msg_id, clean_files)
             await bot.send_message(chat_id=chat_id, text="العملية صارت بدون مشاكل\nتفضل مولاي", reply_to_message_id=reply_msg_id)
             await bot.send_message(chat_id=chat_id, text="🍓")
+            await send_processed_files(chat_id, reply_msg_id, clean_files)
         else:
             raise Exception
             
@@ -206,12 +206,13 @@ async def message_handler(message: types.Message):
         user_msg_counter[user_id] += 1
         count = user_msg_counter[user_id]
 
-        reply_text = "اهلين dز رابط الميديا التريدها عزيزي\nيلا اوف" if count % 2 != 0 else "مو ناوي تستعملني مثل البوتات لو شنو\nترى اضوج"
+        reply_text = "اهلين دز رابط الميديا التريدها عزيزي\nيلا اوف" if count % 2 != 0 else "مو ناوي تستعملني مثل البوتات لو شنو\nترى اضوج"
+        emoji_text = "🫦" if count % 2 != 0 else "😡"
         btn = get_developer_keyboard()
 
         await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
         await bot.send_message(chat_id=chat_id, text=reply_text, reply_markup=btn, reply_to_message_id=message.message_id)
-        await bot.send_message(chat_id=chat_id, text="🫦" if count % 2 != 0 else "😡")
+        await bot.send_message(chat_id=chat_id, text=emoji_text)
 
 async def main():
     await dp.start_polling(bot)
