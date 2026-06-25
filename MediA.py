@@ -147,22 +147,28 @@ async def process_queue(user_id, chat_id):
         clean_files = []
         uploader_name = filter_title(downloaded_info.get('uploader') or downloaded_info.get('uploader_id') or 'Channel')
         
-        for entry in entries:
-            if not entry:
-                continue
-            media_id = entry.get('id', 'UnknownID')
-            matched_file = None
-            
-            for p in os.listdir('downloads'):
-                if p.startswith(media_id):
-                    matched_file = os.path.join('downloads', p)
-                    break
-            
-            if matched_file and os.path.exists(matched_file):
-                ext = os.path.splitext(matched_file)[1]
-                new_path = f"downloads/{uploader_name}_{media_id}{ext}"
-                os.rename(matched_file, new_path)
-                clean_files.append(new_path)
+        with yt_dlp.YoutubeDL({'outtmpl': 'downloads/%(id)s.%(ext)s'}) as ydl_temp:
+            for entry in entries:
+                if not entry:
+                    continue
+                
+                try:
+                    filename_expected = ydl_temp.prepare_filename(entry)
+                    media_id = os.path.splitext(os.path.basename(filename_expected))[0]
+                except:
+                    media_id = entry.get('id', 'UnknownID')
+                
+                matched_file = None
+                for p in os.listdir('downloads'):
+                    if p.startswith(media_id):
+                        matched_file = os.path.join('downloads', p)
+                        break
+                
+                if matched_file and os.path.exists(matched_file):
+                    ext = os.path.splitext(matched_file)[1]
+                    new_path = f"downloads/{uploader_name}_{media_id}{ext}"
+                    os.rename(matched_file, new_path)
+                    clean_files.append(new_path)
 
         if clean_files:
             await send_processed_files(chat_id, reply_msg_id, clean_files)
@@ -200,7 +206,7 @@ async def message_handler(message: types.Message):
         user_msg_counter[user_id] += 1
         count = user_msg_counter[user_id]
 
-        reply_text = "اهلين دز رابط الميديا التريدها عزيزي\nيلا اوف" if count % 2 != 0 else "مو ناوي تستعملني مثل البوتات لو شنو\nترى اضوج"
+        reply_text = "اهلين dز رابط الميديا التريدها عزيزي\nيلا اوف" if count % 2 != 0 else "مو ناوي تستعملني مثل البوتات لو شنو\nترى اضوج"
         btn = get_developer_keyboard()
 
         await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
