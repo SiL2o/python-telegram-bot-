@@ -45,6 +45,36 @@ def get_developer_keyboard():
         ]
     )
 
+def sync_download(url, user_id, chat_id, message_id):
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
+            downloaded = d.get('downloaded_bytes', 0)
+            if total > 0:
+                percent = int((downloaded / total) * 100)
+                if percent >= last_reported_percent[user_id] + 10 or percent == 100:
+                    last_reported_percent[user_id] = percent
+                    if percent < 100:
+                        text_update = f"تم استلام الرابط والبدأ بتنزيل الميديا\nمولاي {percent}%"
+                        asyncio.run_coroutine_threadsafe(
+                            bot.edit_message_text(chat_id=chat_id, message_id=message_id, text=text_update),
+                            asyncio.get_event_loop()
+                        )
+                    else:
+                        asyncio.run_coroutine_threadsafe(
+                            bot.delete_message(chat_id=chat_id, message_id=message_id),
+                            asyncio.get_event_loop()
+                        )
+
+    ydl_opts = {
+        'format': 'bestvideo+bestaudio/best',
+        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'quiet': True,
+        'progress_hooks': [progress_hook],
+    }
+    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        return ydl.extract_info(url, download=True)
+
 async def process_queue(user_id, chat_id):
     if user_processing[user_id] or not user_queues[user_id]: 
         return
@@ -59,8 +89,9 @@ async def process_queue(user_id, chat_id):
     }
     
     try:
+        loop = asyncio.get_running_loop()
         with yt_dlp.YoutubeDL(ydl_opts_info) as ydl:
-            info = ydl.extract_info(url, download=False)
+            info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=False))
             filesize = info.get('filesize') or info.get('filesize_approx') or 0
             if filesize > 456*1024*1024:
                 raise Exception
@@ -77,36 +108,11 @@ async def process_queue(user_id, chat_id):
     await bot.send_message(chat_id=chat_id, text="⏳")
     
     last_reported_percent[user_id] = -10
-
-    def progress_hook(d):
-        if d['status'] == 'downloading':
-            total = d.get('total_bytes') or d.get('total_bytes_estimate') or 0
-            downloaded = d.get('downloaded_bytes', 0)
-            if total > 0:
-                percent = int((downloaded / total) * 100)
-                if percent >= last_reported_percent[user_id] + 10 or percent == 100:
-                    last_reported_percent[user_id] = percent
-                    try:
-                        loop = asyncio.get_event_loop()
-                        if percent < 100:
-                            text_update = f"تم استلام الرابط والبدأ بتنزيل الميديا\nمولاي {percent}%"
-                            loop.create_task(bot.edit_message_text(chat_id=chat_id, message_id=status_msg.message_id, text=text_update))
-                        else:
-                            loop.create_task(bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id))
-                    except: 
-                        pass
-
     os.makedirs('downloads', exist_ok=True)
-    ydl_opts = {
-        'format': 'bestvideo+bestaudio/best',
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
-        'quiet': True,
-        'progress_hooks': [progress_hook],
-    }
     
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl: 
-            info = ydl.extract_info(url, download=True)
+        loop = asyncio.get_running_loop()
+        info = await loop.run_in_executor(None, sync_download, url, user_id, chat_id, status_msg.message_id)
         
         try: 
             await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
@@ -117,9 +123,10 @@ async def process_queue(user_id, chat_id):
         if 'entries' in info:
             for entry in info['entries']: 
                 if entry: 
-                    files.append(ydl.prepare_filename(entry))
-        else: 
-            files.append(ydl.prepare_filename(info))
+                    files.append(info['tools'].prepare_filename(entry) if 'tools' in info else f"downloads/{entry.get('id')}.{entry.get('ext')}")
+        else:
+            with yt_dlp.YoutubeDL({'outtmpl': 'downloads/%(id)s.%(ext)s'}) as temp_ydl:
+                files.append(temp_ydl.prepare_filename(info))
         
         clean_files = []
         for f in files:
