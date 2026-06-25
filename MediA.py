@@ -2,10 +2,8 @@ import os
 import re
 import asyncio
 import collections
-import mimetypes
-from aiogram import Bot, Dispatcher, types, F
-from aiogram.enums import ChatAction
-from aiogram.types import FSInputFile, InputMediaDocument
+from pyrogram import Client, filters
+from pyrogram.enums import ChatAction
 import yt_dlp
 
 try:
@@ -15,10 +13,9 @@ except ImportError:
     pass
 
 TOKEN = "8500103986:AAGps22KpNo_xx4Il3tNJ6sEPDyKtKaK0Wg"
-DEVELOPER_ID = "8597653867"
+DEVELOPER_ID = 8597653867
 
-bot = Bot(token=TOKEN)
-dp = Dispatcher()
+app = Client("media_bot", bot_token=TOKEN)
 
 user_queues = collections.defaultdict(list)
 user_processing = collections.defaultdict(bool)
@@ -48,13 +45,13 @@ class DownloadProgressLogger:
 
     async def _safe_edit(self, text):
         try:
-            await bot.edit_message_text(chat_id=self.chat_id, message_id=self.message_id, text=text)
+            await app.edit_message_text(chat_id=self.chat_id, message_id=self.message_id, text=text)
         except:
             pass
 
     async def _safe_delete(self):
         try:
-            await bot.delete_message(chat_id=self.chat_id, message_id=self.message_id)
+            await app.delete_message(chat_id=self.chat_id, message_id=self.message_id)
         except:
             pass
 
@@ -66,17 +63,14 @@ def filter_title(text):
     return cleaned.strip()
 
 def get_developer_keyboard():
-    return types.InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                {
-                    "text": "تواصل مع المطور",
-                    "url": f"tg://user?id={DEVELOPER_ID}",
-                    "style": "danger"
-                }
-            ]
+    return [
+        [
+            {
+                "text": "تواصل مع المطور",
+                "url": f"tg://user?id={DEVELOPER_ID}"
+            }
         ]
-    )
+    ]
 
 def extract_media_info(url):
     ydl_opts = {
@@ -101,10 +95,9 @@ async def send_processed_files(chat_id, reply_msg_id, files):
     for chunk_idx in range(0, len(files), 8):
         group = files[chunk_idx:chunk_idx+8]
         if len(group) > 1:
-            media_group = [InputMediaDocument(media=FSInputFile(f, filename=os.path.basename(f))) for f in group]
-            await bot.send_media_group(chat_id=chat_id, media=media_group, reply_to_message_id=reply_msg_id)
+            await app.send_media_group(chat_id=chat_id, media=group, reply_to_message_id=reply_msg_id)
         else:
-            await bot.send_document(chat_id=chat_id, document=FSInputFile(group[0], filename=os.path.basename(group[0])), reply_to_message_id=reply_msg_id)
+            await app.send_document(chat_id=chat_id, document=group[0], reply_to_message_id=reply_msg_id)
 
 async def process_queue(user_id, chat_id):
     if user_processing[user_id] or not user_queues[user_id]:
@@ -119,27 +112,27 @@ async def process_queue(user_id, chat_id):
         if filesize > 456 * 1024 * 1024:
             raise Exception
     except:
-        btn = get_developer_keyboard()
-        await bot.send_message(chat_id=chat_id, text="الرابط مو مدعوم او الموقع مو\nمدعوم", reply_markup=btn, reply_to_message_id=reply_msg_id)
-        await bot.send_message(chat_id=chat_id, text="👈🏻👉🏻")
+        await app.send_message(chat_id=chat_id, text="الرابط مو مدعوم او الموقع مو\nمدعوم", reply_to_message_id=reply_msg_id)
+        await app.send_message(chat_id=chat_id, text="👈🏻👉🏻")
         user_processing[user_id] = False
-        asyncio.create_task(process_queue(user_id, chat_id))
+        if user_queues[user_id]:
+            asyncio.create_task(process_queue(user_id, chat_id))
         return
 
-    await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-    status_msg = await bot.send_message(chat_id=chat_id, text="تم استلام الرابط والبدأ بتنزيل الميديا\nمولاي 0%", reply_to_message_id=reply_msg_id)
-    await bot.send_message(chat_id=chat_id, text="⏳")
+    await app.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+    status_msg = await app.send_message(chat_id=chat_id, text="تم استلام الرابط والبدأ بتنزيل الميديا\nمولاي 0%", reply_to_message_id=reply_msg_id)
+    await app.send_message(chat_id=chat_id, text="⏳")
 
     last_reported_percent[user_id] = -10
     os.makedirs('downloads', exist_ok=True)
     
-    logger_instance = DownloadProgressLogger(user_id, chat_id, status_msg.message_id)
+    logger_instance = DownloadProgressLogger(user_id, chat_id, status_msg.id)
 
     try:
         downloaded_info = await asyncio.to_thread(download_media_sync, url, logger_instance)
         
         try:
-            await bot.delete_message(chat_id=chat_id, message_id=status_msg.message_id)
+            await app.delete_message(chat_id=chat_id, message_ids=status_msg.id)
         except:
             pass
 
@@ -171,16 +164,15 @@ async def process_queue(user_id, chat_id):
                     clean_files.append(new_path)
 
         if clean_files:
-            await bot.send_message(chat_id=chat_id, text="العملية صارت بدون مشاكل\nتفضل مولاي", reply_to_message_id=reply_msg_id)
-            await bot.send_message(chat_id=chat_id, text="🍓")
+            await app.send_message(chat_id=chat_id, text="العملية صارت بدون مشاكل\nتفضل مولاي", reply_to_message_id=reply_msg_id)
+            await app.send_message(chat_id=chat_id, text="🍓")
             await send_processed_files(chat_id, reply_msg_id, clean_files)
         else:
             raise Exception
             
     except:
-        btn = get_developer_keyboard()
-        await bot.send_message(chat_id=chat_id, text="الرابط مو مدعوم او الموقع مو\nمدعوم", reply_markup=btn, reply_to_message_id=reply_msg_id)
-        await bot.send_message(chat_id=chat_id, text="👈🏻👉🏻")
+        await app.send_message(chat_id=chat_id, text="الرابط مو مدعوم او الموقع مو\nمدعوم", reply_to_message_id=reply_msg_id)
+        await app.send_message(chat_id=chat_id, text="👈🏻👉🏻")
     finally:
         if os.path.exists('downloads'):
             for f in os.listdir('downloads'):
@@ -189,17 +181,19 @@ async def process_queue(user_id, chat_id):
                 except:
                     pass
         user_processing[user_id] = False
-        asyncio.create_task(process_queue(user_id, chat_id))
+        if user_queues[user_id]:
+            asyncio.create_task(process_queue(user_id, chat_id))
 
-@dp.message(F.content_type.any())
-async def message_handler(message: types.Message):
-    user_id, chat_id = message.from_user.id, message.chat.id
+@app.on_message(filters.all)
+async def message_handler(client, message):
+    user_id = message.from_user.id if message.from_user else message.chat.id
+    chat_id = message.chat.id
     text = message.text or message.caption or ""
     url_match = re.search(r'https?://[^\s]+', text)
 
     if url_match:
         if len(user_queues[user_id]) < 8:
-            user_queues[user_id].append((url_match.group(0), message.message_id))
+            user_queues[user_id].append((url_match.group(0), message.id))
             if not user_processing[user_id]:
                 asyncio.create_task(process_queue(user_id, chat_id))
     else:
@@ -208,14 +202,10 @@ async def message_handler(message: types.Message):
 
         reply_text = "اهلين دز رابط الميديا التريدها عزيزي\nيلا اوف" if count % 2 != 0 else "مو ناوي تستعملني مثل البوتات لو شنو\nترى اضوج"
         emoji_text = "🫦" if count % 2 != 0 else "😡"
-        btn = get_developer_keyboard()
 
-        await bot.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
-        await bot.send_message(chat_id=chat_id, text=reply_text, reply_markup=btn, reply_to_message_id=message.message_id)
-        await bot.send_message(chat_id=chat_id, text=emoji_text)
-
-async def main():
-    await dp.start_polling(bot)
+        await app.send_chat_action(chat_id=chat_id, action=ChatAction.TYPING)
+        await app.send_message(chat_id=chat_id, text=reply_text, reply_to_message_id=message.id)
+        await app.send_message(chat_id=chat_id, text=emoji_text)
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    app.run()

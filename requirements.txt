@@ -1,6 +1,5 @@
-aiogram
+pyrogram
+tgcrypto
 yt-dlp
 static-ffmpeg
-aiohttp[speedups]
 aiofiles
-aiodns
