@@ -14,7 +14,7 @@ try:
 except ImportError:
     pass
 
-TOKEN = os.getenv("BOT_TOKEN")
+TOKEN = "8500103986:AAGps22KpNo_xx4Il3tNJ6sEPDyKtKaK0Wg"
 DEVELOPER_ID = "8597653867"
 
 bot = Bot(token=TOKEN)
