@@ -95,7 +95,9 @@ def format_sub_url(link):
         return f"https://t.me/{link[1:]}"
     if link.startswith("-100"):
         return f"https://t.me/c/{link[4:]}/1"
-    if link.startswith("http"):
+    if link.startswith("http") or link.startswith("t.me"):
+        if link.startswith("t.me"):
+            return f"https://{link}"
         return link
     return f"https://t.me/{link}"
 
@@ -234,16 +236,37 @@ async def handle_all_messages(message: types.Message):
 
     if user_id == ADMIN_ID and text == "تعيين رابط":
         user_state[f"waiting_link_{user_id}"] = True
-        w_msg = await send_animated_text(message, "ارسل يوزر / رابط / ايدي\nالقناة او الكروب", reply_markup=ReplyKeyboardRemove())
+        w_msg = await bot.send_message(chat_id=message.chat.id, text="ارسل يوزر / رابط القناة او الكروب\nيلا مولاي", reply_markup=ReplyKeyboardRemove(), reply_to_message_id=message.message_id)
         asyncio.create_task(handle_reactions(message, w_msg))
         return
 
     if user_id == ADMIN_ID and user_state.get(f"waiting_link_{user_id}"):
         user_state.pop(f"waiting_link_{user_id}")
-        if not (text.startswith("@") or text.startswith("-100") or text.startswith("http") or text.isdigit()):
+        
+        is_url = text.startswith("http") or text.startswith("t.me")
+        is_user = text.startswith("@")
+        
+        if not (is_url or is_user):
             m1 = await send_animated_text(message, "اهو ليش تمضرط وياي مو راح اضوج\nلاتعيدها مولاي")
             await bot.send_message(chat_id=message.chat.id, text="💕", reply_to_message_id=message.message_id)
             asyncio.create_task(handle_reactions(message, m1))
+            return
+            
+        target_chat = text
+        if text.startswith("t.me/"):
+            target_chat = "@" + text.split("t.me/")[1]
+            
+        try:
+            await bot.get_chat(target_chat)
+        except:
+            msg_type = "الرابط" if is_url else "اليوزر"
+            err_msg = await bot.send_message(
+                chat_id=message.chat.id,
+                text=f"هذا {msg_type} مو شغال وعاطل ماله اثر دادي\nههع ابوس زبك",
+                reply_to_message_id=message.message_id
+            )
+            await bot.send_message(chat_id=message.chat.id, text="🍔", reply_to_message_id=message.message_id)
+            asyncio.create_task(handle_reactions(message, err_msg))
             return
         
         set_sub_link(text)
@@ -251,7 +274,7 @@ async def handle_all_messages(message: types.Message):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(text), style="success"))
         
-        m2 = await send_animated_text(message, "تم تعيين رابط زر الاشتراك الفرضي\nصار مولاي", reply_markup=kb.as_markup())
+        m2 = await send_animated_text(message, "تم تعيين زر الاشتراك الفرضي\nصار مولاي", reply_markup=kb.as_markup())
         await bot.send_message(chat_id=message.chat.id, text="🌷", reply_to_message_id=message.message_id)
         asyncio.create_task(handle_reactions(message, m2))
         return
