@@ -321,7 +321,7 @@ async def handle_all_messages(message: types.Message):
     text = message.text or ""
 
     if user_id == ADMIN_ID and text == "ادت":
-        a_msg = await send_animated_text(message, "اكتب الآن في الشات:\n- تعيين رابط (لتغيير قناة الاشتراك)\n- عرض الزر (لمشاهدة الزر الحالي)")
+        a_msg = await send_animated_text(message, "تريد تعين رابط الزر ارسل تعيين رابط\nتريد معاينة سريعة ارسل عرض الزر")
         asyncio.create_task(handle_reactions(message, a_msg))
         return
 
