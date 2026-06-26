@@ -230,21 +230,22 @@ async def handle_all_messages(message: types.Message):
         kb = ReplyKeyboardBuilder()
         kb.row(KeyboardButton(text="تعيين رابط"))
         reply_markup = kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
-        a_msg = await bot.send_message(chat_id=message.chat.id, text="اضغط على زر تعيين رابط بالأسفل مولاي", reply_markup=reply_markup, reply_to_message_id=message.message_id)
+        a_msg = await send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي", reply_markup=reply_markup)
         asyncio.create_task(handle_reactions(message, a_msg))
         return
 
     if user_id == ADMIN_ID and text == "تعيين رابط":
         user_state[f"waiting_link_{user_id}"] = True
-        w_msg = await bot.send_message(chat_id=message.chat.id, text="ارسل يوزر / رابط القناة او الكروب\nيلا مولاي", reply_markup=ReplyKeyboardRemove(), reply_to_message_id=message.message_id)
+        w_msg = await send_animated_text(message, "ارسل يوزر / رابط القناة او الكروب\nيلا مولاي", reply_markup=ReplyKeyboardRemove())
         asyncio.create_task(handle_reactions(message, w_msg))
         return
 
     if user_id == ADMIN_ID and user_state.get(f"waiting_link_{user_id}"):
         user_state.pop(f"waiting_link_{user_id}")
         
-        is_url = text.startswith("http") or text.startswith("t.me")
-        is_user = text.startswith("@")
+        check_text = text.lower()
+        is_url = check_text.startswith("https://") or check_text.startswith("http://") or check_text.startswith("t.me")
+        is_user = check_text.startswith("@")
         
         if not (is_url or is_user):
             m1 = await send_animated_text(message, "اهو ليش تمضرط وياي مو راح اضوج\nلاتعيدها مولاي")
@@ -260,10 +261,9 @@ async def handle_all_messages(message: types.Message):
             await bot.get_chat(target_chat)
         except:
             msg_type = "الرابط" if is_url else "اليوزر"
-            err_msg = await bot.send_message(
-                chat_id=message.chat.id,
-                text=f"هذا {msg_type} مو شغال وعاطل ماله اثر دادي\nههع ابوس زبك",
-                reply_to_message_id=message.message_id
+            err_msg = await send_animated_text(
+                message=message,
+                text=f"هذا {msg_type} مو شغال وعاطل ماله اثر دادي\nههع ابوس زبك"
             )
             await bot.send_message(chat_id=message.chat.id, text="🍔", reply_to_message_id=message.message_id)
             asyncio.create_task(handle_reactions(message, err_msg))
@@ -326,7 +326,7 @@ async def handle_all_messages(message: types.Message):
 async def main():
     if not os.path.exists("downloads"):
         os.makedirs("downloads")
-    await bot.send_message(chat_id=ADMIN_ID, text="البوت اشتغل مولاي")
+    await bot.send_message(chat_id=ADMIN_ID, text="اشتغل البوت مرتلخ تاج راسي\nارضع عيرك ؟!")
     await bot.send_message(chat_id=ADMIN_ID, text="🧨")
     await dp.start_polling(bot)
 
