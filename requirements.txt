@@ -1,5 +1,0 @@
-pyrogram
-tgcrypto
-yt-dlp
-static-ffmpeg
-aiofiles
