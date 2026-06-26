@@ -63,7 +63,8 @@ async def send_animated_text(message: types.Message, text, reply_markup=None):
             msg = await bot.send_message(
                 chat_id=message.chat.id, 
                 text=current_text, 
-                reply_to_message_id=message.message_id
+                reply_to_message_id=message.message_id,
+                reply_markup=reply_markup
             )
         else:
             try:
@@ -131,7 +132,7 @@ async def delayed_banana_reaction(message):
 async def download_and_send(user_id, url, message):
     asyncio.create_task(delayed_banana_reaction(message))
 
-    status_msg = await bot.send_message(user_id, "دانفذ طلبك عزيزي انتظر بليز | ترن ترن 0%", reply_to_message_id=message.message_id)
+    status_msg = await send_animated_text(message, "دانفذ طلبك عزيزي انتظر بليز\nترن ترن 0%")
     await bot.send_chat_action(chat_id=user_id, action=ChatAction.UPLOAD_VIDEO)
     
     last_reported_milestone = 0
@@ -147,12 +148,41 @@ async def download_and_send(user_id, url, message):
                     last_reported_milestone = (percent // 25) * 25
                     if percent == 100:
                         last_reported_milestone = 100
-                    asyncio.create_task(status_msg.edit_text(f"دانفذ طلبك عزيزي انتظر بليز | ترن ترن {percent}%"))
+                    try:
+                        asyncio.get_event_loop().create_task(
+                            bot.edit_message_text(
+                                chat_id=user_id,
+                                message_id=status_msg.message_id,
+                                text=f"دانفذ طلبك عزيزي انتظر بليز\nترن ترن {percent}%"
+                            )
+                        )
+                    except:
+                        pass
 
     ydl_opts = {
-        'outtmpl': 'downloads/%(id)s.%(ext)s',
+        'outtmpl': 'downloads/%%(id)s.%%(ext)s',
         'progress_hooks': [ytdl_hook],
         'quiet': True,
+        'no_warnings': True,
+        'nocheckcertificate': True,
+        'ignoreerrors': False,
+        'extractor_args': {
+            'youtube': {'player_client': ['android', 'web']},
+            'tiktok': {'app_version': ['all']}
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+            'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
+            'Sec-Ch-Ua': '"Chromium";v="124", "Google Chrome";v="124", "Not-A.Brand";v="99"',
+            'Sec-Ch-Ua-Mobile': '?0',
+            'Sec-Ch-Ua-Platform': '"Windows"',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Sec-Fetch-User': '?1',
+            'Upgrade-Insecure-Requests': '1'
+        }
     }
 
     loop = asyncio.get_event_loop()
@@ -160,6 +190,10 @@ async def download_and_send(user_id, url, message):
         import yt_dlp
         ydl = yt_dlp.YoutubeDL(ydl_opts)
         info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+        
+        if not info:
+            raise Exception("Extract failed")
+            
         filename = ydl.prepare_filename(info)
         
         if not os.path.exists(filename):
@@ -170,8 +204,11 @@ async def download_and_send(user_id, url, message):
                     filename = possible_file
                     break
 
+        if not os.path.exists(filename):
+            raise Exception("File not found")
+
         try:
-            await status_msg.delete()
+            await bot.delete_message(chat_id=user_id, message_id=status_msg.message_id)
         except:
             pass
             
@@ -179,9 +216,10 @@ async def download_and_send(user_id, url, message):
         v_msg = await bot.send_video(
             chat_id=user_id, 
             video=video_file, 
-            caption="طلبك تنفذ بدون مشاكل يبعدكسي\nاوف بستك",
             reply_to_message_id=message.message_id
         )
+        
+        await send_animated_text(message, "طلبك تنفذ بدون مشاكل يبعدكسي\nاوف بستك")
         m_msg = await bot.send_message(user_id, "🫦", reply_to_message_id=message.message_id)
         asyncio.create_task(handle_reactions(message, v_msg))
         
@@ -190,7 +228,7 @@ async def download_and_send(user_id, url, message):
             
     except Exception as e:
         try:
-            await status_msg.delete()
+            await bot.delete_message(chat_id=user_id, message_id=status_msg.message_id)
         except:
             pass
             
@@ -204,7 +242,7 @@ async def worker(user_id):
         try:
             await asyncio.wait_for(download_and_send(user_id, url, msg), timeout=360.0)
         except asyncio.TimeoutError:
-            t_msg = await bot.send_message(user_id, "انتهى مؤقت انتظار اكتمال العملية\nوتعتبر فاشلة", reply_to_message_id=msg.message_id)
+            t_msg = await send_animated_text(msg, "انتهى مؤقت انتظار اكتمال العملية\nوتعتبر فاشلة")
             await bot.send_message(user_id, "🍌", reply_to_message_id=msg.message_id)
             asyncio.create_task(handle_reactions(msg, t_msg))
         finally:
@@ -247,6 +285,7 @@ async def handle_all_messages(message: types.Message):
     if user_id == ADMIN_ID and text == "ادت":
         kb = ReplyKeyboardBuilder()
         kb.row(KeyboardButton(text="تعيين رابط"))
+        kb.adjust(1)
         reply_markup = kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
         a_msg = await send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي", reply_markup=reply_markup)
         asyncio.create_task(handle_reactions(message, a_msg))
