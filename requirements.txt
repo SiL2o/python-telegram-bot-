@@ -1,0 +1,13 @@
+aiogram
+aiohttp
+yt-dlp
+aiofiles
+tgcrypto
+Pillow
+uvloop
+certifi
+python-dotenv
+ujson
+gdown
+h11
+httpcore
