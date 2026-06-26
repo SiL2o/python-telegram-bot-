@@ -224,13 +224,16 @@ async def handle_all_messages(message: types.Message):
     user_id = message.from_user.id
     text = message.text or ""
 
-    if user_id == ADMIN_ID and text == "ادت":
-        kb = ReplyKeyboardMarkup(
-            keyboard=[[KeyboardButton(text="تعيين رابط")]],
-            resize_keyboard=True,
-            one_time_keyboard=True
+        if user_id == ADMIN_ID and text == "ادت":
+        from aiogram.utils.keyboard import ReplyKeyboardBuilder
+        builder = ReplyKeyboardBuilder()
+        builder.add(KeyboardButton(text="تعيين رابط"))
+        
+        a_msg = await send_animated_text(
+            message, 
+            "عين رابط الاشتراك الفرضي من الكيبورد بالاسفل", 
+            reply_markup=builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
         )
-        a_msg = await send_animated_text(message, "عين رابط الاشتراك الفرضي من الكيبورد بالأسفل", reply_markup=kb)
         asyncio.create_task(handle_reactions(message, a_msg))
         return
 
