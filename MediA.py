@@ -5,7 +5,7 @@ import sqlite3
 import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, FSInputFile
+from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardButton, FSInputFile
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction
@@ -62,12 +62,14 @@ async def send_animated_text(message: types.Message, text, reply_markup=None):
             msg = await bot.send_message(
                 chat_id=message.chat.id, 
                 text=current_text, 
-                reply_markup=reply_markup,
                 reply_to_message_id=message.message_id
             )
         else:
             try:
-                await msg.edit_text(current_text, reply_markup=reply_markup)
+                if i + 2 >= len(words):
+                    await msg.edit_text(current_text, reply_markup=reply_markup)
+                else:
+                    await msg.edit_text(current_text)
             except:
                 pass
         await asyncio.sleep(0.3)
@@ -116,21 +118,7 @@ async def handle_reactions(message, bot_msg=None):
         except:
             pass
 
-async def process_tg_link(url, message):
-    try:
-        await bot.send_chat_action(chat_id=message.chat.id, action=ChatAction.UPLOAD_DOCUMENT)
-        msg_text = "عيرك ثكيل هواي وكسي مايكدر \nيشيله مولاي"
-        msg1 = await bot.send_message(chat_id=message.chat.id, text=msg_text, reply_to_message_id=message.message_id)
-        msg2 = await bot.send_message(chat_id=message.chat.id, text="🐈‍⬛", reply_to_message_id=message.message_id)
-        asyncio.create_task(handle_reactions(message, msg1))
-    except:
-        pass
-
 async def download_and_send(user_id, url, message):
-    if "t.me/" in url or "telegram.me/" in url:
-        await process_tg_link(url, message)
-        return
-
     try:
         await message.react([types.ReactionTypeEmoji(emoji="🍌")])
     except:
@@ -237,10 +225,19 @@ async def handle_all_messages(message: types.Message):
     text = message.text or ""
 
     if user_id == ADMIN_ID and text == "ادت":
-        kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="تعيين رابط", callback_data="set_link_btn", style="danger"))
-        a_msg = await send_animated_text(message, "عين رابط الاشتراك الفرضي", reply_markup=kb.as_markup())
+        kb = ReplyKeyboardMarkup(
+            keyboard=[[KeyboardButton(text="تعيين رابط")]],
+            resize_keyboard=True,
+            one_time_keyboard=True
+        )
+        a_msg = await send_animated_text(message, "عين رابط الاشتراك الفرضي من الكيبورد بالأسفل", reply_markup=kb)
         asyncio.create_task(handle_reactions(message, a_msg))
+        return
+
+    if user_id == ADMIN_ID and text == "تعيين رابط":
+        user_state[f"waiting_link_{user_id}"] = True
+        w_msg = await send_animated_text(message, "ارسل يوزر / رابط / ايدي\nالقناة او الكروب", reply_markup=ReplyKeyboardRemove())
+        asyncio.create_task(handle_reactions(message, w_msg))
         return
 
     if user_id == ADMIN_ID and user_state.get(f"waiting_link_{user_id}"):
@@ -300,18 +297,6 @@ async def handle_all_messages(message: types.Message):
 
     if len(user_queues[user_id]) == 1:
         asyncio.create_task(worker(user_id))
-
-@dp.callback_query()
-async def handle_callbacks(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    if user_id != ADMIN_ID:
-        return
-
-    if callback.data == "set_link_btn":
-        user_state[f"waiting_link_{user_id}"] = True
-        w_msg = await send_animated_text(callback.message, "ارسل يوزر / رابط / ايدي\nالقناة او الكروب")
-        asyncio.create_task(handle_reactions(callback.message, w_msg))
-        await callback.answer()
 
 async def main():
     if not os.path.exists("downloads"):
