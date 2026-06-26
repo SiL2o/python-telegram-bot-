@@ -218,7 +218,7 @@ async def download_and_get_files(user_id, url, message):
                     loop.call_soon_threadsafe(progress_queue.put_nowait, last_reported_milestone)
 
     ydl_opts = {
-        'outtmpl': 'downloads/%%(id)s_%%(title)s.%%(ext)s',
+        'outtmpl': '%(uploader|channel)s_%(id)s.%(ext)s',
         'progress_hooks': [ytdl_hook],
         'quiet': True,
         'no_warnings': True,
