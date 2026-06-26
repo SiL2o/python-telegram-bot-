@@ -296,7 +296,8 @@ async def start_cmd(message: types.Message):
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
+        s_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
+        await bot.send_message(chat_id=user_id, text="🍔")
         asyncio.create_task(handle_reactions(message, s_msg))
         return
 
@@ -322,6 +323,7 @@ async def handle_all_messages(message: types.Message):
 
     if user_id == ADMIN_ID and text == "ادت":
         a_msg = await send_animated_text(message, "تريد تعين رابط الزر ارسل تعيين رابط\nتريد معاينة سريعة ارسل عرض الزر")
+        await bot.send_message(chat_id=message.chat.id, text="🎮")
         asyncio.create_task(handle_reactions(message, a_msg))
         return
 
@@ -334,7 +336,8 @@ async def handle_all_messages(message: types.Message):
     if user_id == ADMIN_ID and text == "عرض الزر":
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        v_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
+        v_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
+        await bot.send_message(chat_id=message.chat.id, text="🍔")
         asyncio.create_task(handle_reactions(message, v_msg))
         return
 
@@ -382,7 +385,8 @@ async def handle_all_messages(message: types.Message):
         if not await check_sub(user_id):
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-            s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
+            s_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
+            await bot.send_message(chat_id=user_id, text="🍔")
             asyncio.create_task(handle_reactions(message, s_msg))
             return
             
@@ -406,7 +410,8 @@ async def handle_all_messages(message: types.Message):
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
+        s_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
+        await bot.send_message(chat_id=user_id, text="🍔")
         asyncio.create_task(handle_reactions(message, s_msg))
         return
 
