@@ -6,7 +6,7 @@ import random
 import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, FSInputFile, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import InlineKeyboardButton, FSInputFile, ReplyKeyboardRemove
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction
@@ -65,16 +65,6 @@ def extract_url(text):
     pattern = r'(https?://[^\s]+)'
     match = re.search(pattern, text)
     return match.group(0) if match else None
-
-def get_keyboard():
-    kb = ReplyKeyboardMarkup(
-        keyboard=[
-            [KeyboardButton(text="تعيين رابط"), KeyboardButton(text="عرض الزر")],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=True
-    )
-    return kb
 
 async def send_animated_text(message: types.Message, text: str, reply_markup=None):
     words = text.split(" ")
@@ -331,33 +321,14 @@ async def handle_all_messages(message: types.Message):
     text = message.text or ""
 
     if user_id == ADMIN_ID and text == "ادت":
-        reply_markup = get_keyboard()
-        asyncio.create_task(send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي"))
-        a_msg = await bot.send_message(
-            chat_id=message.chat.id,
-            text="..",
-            reply_markup=reply_markup,
-            reply_to_message_id=message.message_id
-        )
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=a_msg.message_id)
-        except:
-            pass
+        a_msg = await send_animated_text(message, "اكتب الآن في الشات:\n- تعيين رابط (لتغيير قناة الاشتراك)\n- عرض الزر (لمشاهدة الزر الحالي)")
+        asyncio.create_task(handle_reactions(message, a_msg))
         return
 
     if user_id == ADMIN_ID and text == "تعيين رابط":
         user_state[f"waiting_link_{user_id}"] = True
-        asyncio.create_task(send_animated_text(message, "ارسل يوزر / رابط القناة او الكروب\nيلا مولاي"))
-        w_msg = await bot.send_message(
-            chat_id=message.chat.id,
-            text="..",
-            reply_markup=ReplyKeyboardRemove(),
-            reply_to_message_id=message.message_id
-        )
-        try:
-            await bot.delete_message(chat_id=message.chat.id, message_id=w_msg.message_id)
-        except:
-            pass
+        w_msg = await send_animated_text(message, "ارسل يوزر / رابط القناة او الكروب\nيلا مولاي")
+        asyncio.create_task(handle_reactions(message, w_msg))
         return
 
     if user_id == ADMIN_ID and text == "عرض الزر":
