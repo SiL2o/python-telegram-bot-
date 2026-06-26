@@ -47,13 +47,10 @@ def set_sub_link(val):
     cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('sub_link', ?)", (val,))
     conn.commit()
 
-def is_emoji_message(msg):
-    if not msg:
+def is_emoji_message(text):
+    if not text:
         return False
-    text = msg.text or ""
     clean_text = text.strip()
-    if not clean_text:
-        return False
     if len(clean_text) > 4:
         return False
     emoji_pattern = re.compile(r'^[\U00010000-\U0010ffff\u200d\u2600-\u27bf]+$')
@@ -65,7 +62,6 @@ async def send_animated_text(message: types.Message, text, reply_markup=None, is
         return None
         
     current_text = words[0]
-    
     reply_id = message.message_id if is_reply else None
     
     msg = await bot.send_message(
@@ -73,6 +69,10 @@ async def send_animated_text(message: types.Message, text, reply_markup=None, is
         text=current_text, 
         reply_to_message_id=reply_id
     )
+    
+    if msg and not is_emoji_message(current_text):
+        asyncio.create_task(handle_reactions(None, msg))
+        
     await asyncio.sleep(0.3)
     
     idx = 1
@@ -138,31 +138,34 @@ def extract_url(text):
     return match.group(0) if match else None
 
 async def handle_reactions(message, bot_msg=None):
-    await asyncio.sleep(3)
+    if not bot_msg:
+        await asyncio.sleep(3)
+        
     reactions = ["🥰", "😡", "😭", "🤣"]
     r1 = random.choice(reactions)
     r2 = random.choice([r for r in reactions if r != r1])
     
-    if message and not is_emoji_message(message):
+    if message and message.text and not is_emoji_message(message.text):
         try:
             await message.react([types.ReactionTypeEmoji(emoji=r1)])
         except:
             pass
             
-    if bot_msg and bot_msg.video:
-        try:
-            await bot_msg.react([types.ReactionTypeEmoji(emoji=r2)])
-        except:
-            pass
-    elif bot_msg and not is_emoji_message(bot_msg):
-        try:
-            await bot_msg.react([types.ReactionTypeEmoji(emoji=r2)])
-        except:
-            pass
+    if bot_msg:
+        if bot_msg.video:
+            try:
+                await bot_msg.react([types.ReactionTypeEmoji(emoji=r2)])
+            except:
+                pass
+        elif bot_msg.text and not is_emoji_message(bot_msg.text):
+            try:
+                await bot_msg.react([types.ReactionTypeEmoji(emoji=r2)])
+            except:
+                pass
 
 async def delayed_banana_reaction(message):
     await asyncio.sleep(1)
-    if message and not is_emoji_message(message):
+    if message and message.text and not is_emoji_message(message.text):
         try:
             await message.react([types.ReactionTypeEmoji(emoji="🍌")])
         except:
@@ -318,24 +321,23 @@ async def start_cmd(message: types.Message):
         return
         
     user_id = message.from_user.id
+    asyncio.create_task(handle_reactions(message, None))
+    
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb, is_reply=True)
-        asyncio.create_task(handle_reactions(message, s_msg))
+        await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb, is_reply=True)
         return
 
     state = user_state.get(user_id, 0)
     if state == 0:
-        b_msg = await send_animated_text(message, "اهلين دز رابط الميديا التريدها عزيزي\nاوف يلا", is_reply=True)
+        await send_animated_text(message, "اهلين دز رابط الميديا التريدها عزيزي\nاوف يلا", is_reply=True)
         await bot.send_message(chat_id=user_id, text="🏀")
         user_state[user_id] = 1
-        asyncio.create_task(handle_reactions(message, b_msg))
     else:
-        b_msg = await send_animated_text(message, "مو ناوي تستعملني مثل البوتات ؟!\nترى اضوج منك", is_reply=True)
+        await send_animated_text(message, "مو ناوي تستعملني مثل البوتات ؟!\nترى اضوج منك", is_reply=True)
         await bot.send_message(chat_id=user_id, text="🐈‍⬛")
         user_state[user_id] = 0
-        asyncio.create_task(handle_reactions(message, b_msg))
 
 @dp.message()
 async def handle_all_messages(message: types.Message):
@@ -344,6 +346,8 @@ async def handle_all_messages(message: types.Message):
 
     user_id = message.from_user.id
     text = message.text or ""
+    
+    asyncio.create_task(handle_reactions(message, None))
 
     if user_id == ADMIN_ID and text == "ادت":
         kb = ReplyKeyboardBuilder()
@@ -379,7 +383,6 @@ async def handle_all_messages(message: types.Message):
         if not (is_url or is_user):
             m1 = await send_animated_text(message, "اهو ليش تمضرط وياي مو راح اضوج\nلاتعيدها مولاي", is_reply=True)
             await bot.send_message(chat_id=message.chat.id, text="💕")
-            asyncio.create_task(handle_reactions(message, m1))
             return
             
         target_chat = text
@@ -390,13 +393,12 @@ async def handle_all_messages(message: types.Message):
             await bot.get_chat(target_chat)
         except:
             msg_type = "الرابط" if is_url else "اليوزر"
-            err_msg = await send_animated_text(
+            await send_animated_text(
                 message=message,
                 text=f"هذا {msg_type} مو شغال وعاطل ماله اثر دادي\nههع ابوس زبك",
                 is_reply=True
             )
             await bot.send_message(chat_id=message.chat.id, text="🍔")
-            asyncio.create_task(handle_reactions(message, err_msg))
             return
         
         set_sub_link(text)
@@ -404,9 +406,8 @@ async def handle_all_messages(message: types.Message):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(text), style="success"))
         
-        m2 = await send_animated_text(message, "تم تعيين زر الاشتراك الفرضي\nصار مولاي", reply_markup=kb, is_reply=True)
+        await send_animated_text(message, "تم تعيين زر الاشتراك الفرضي\nصار مولاي", reply_markup=kb, is_reply=True)
         await bot.send_message(chat_id=message.chat.id, text="🌷")
-        asyncio.create_task(handle_reactions(message, m2))
         return
 
     url = extract_url(text)
@@ -414,32 +415,28 @@ async def handle_all_messages(message: types.Message):
         if not await check_sub(user_id):
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-            s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb, is_reply=True)
-            asyncio.create_task(handle_reactions(message, s_msg))
+            await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb, is_reply=True)
             return
             
         state = user_state.get(user_id, 0)
         if state == 0:
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text="تواصل مع المطور", url=f"tg://user?id={ADMIN_ID}", style="primary"))
-            b_msg = await send_animated_text(message, "اهلين دز رابط الميديا التريدها عزيزي\nاوف يلا", reply_markup=kb, is_reply=True)
+            await send_animated_text(message, "اهلين دز رابط الميديا التريدها عزيزي\nاوف يلا", reply_markup=kb, is_reply=True)
             await bot.send_message(chat_id=user_id, text="🏀")
             user_state[user_id] = 1
-            asyncio.create_task(handle_reactions(message, b_msg))
         else:
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text="تواصل مع المطور", url=f"tg://user?id={ADMIN_ID}", style="primary"))
-            b_msg = await send_animated_text(message, "مو ناوي تستعملني مثل البوتات ؟!\nترى اضوج منك", reply_markup=kb, is_reply=True)
+            await send_animated_text(message, "مو ناوي تستعملني مثل البوتات ؟!\nترى اضوج منك", reply_markup=kb, is_reply=True)
             await bot.send_message(chat_id=user_id, text="🐈‍⬛")
             user_state[user_id] = 0
-            asyncio.create_task(handle_reactions(message, b_msg))
         return
 
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb, is_reply=True)
-        asyncio.create_task(handle_reactions(message, s_msg))
+        await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb, is_reply=True)
         return
 
     if user_id not in user_queues:
