@@ -65,11 +65,22 @@ async def send_animated_text(message: types.Message, text, reply_markup=None):
         return None
         
     current_text = words[0]
-    msg = await bot.send_message(
-        chat_id=message.chat.id, 
-        text=current_text, 
-        reply_to_message_id=message.message_id
-    )
+    
+    if reply_markup and isinstance(reply_markup, ReplyKeyboardMarkup):
+        msg = await bot.send_message(
+            chat_id=message.chat.id, 
+            text=current_text, 
+            reply_to_message_id=message.message_id,
+            reply_markup=reply_markup
+        )
+        reply_markup = None
+    else:
+        msg = await bot.send_message(
+            chat_id=message.chat.id, 
+            text=current_text, 
+            reply_to_message_id=message.message_id
+        )
+        
     await asyncio.sleep(0.3)
     
     idx = 1
@@ -343,16 +354,17 @@ async def handle_all_messages(message: types.Message):
     text = message.text or ""
 
     if user_id == ADMIN_ID and text == "ادت":
-        await send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي")
         kb = ReplyKeyboardBuilder()
         kb.add(KeyboardButton(text="تعيين رابط"))
         reply_markup = ReplyKeyboardMarkup(keyboard=kb.export(), resize_keyboard=True, one_time_keyboard=True)
-        await bot.send_message(chat_id=message.chat.id, text="لوحة التحكم:", reply_markup=reply_markup)
+        a_msg = await send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي", reply_markup=reply_markup)
+        asyncio.create_task(handle_reactions(message, a_msg))
         return
 
     if user_id == ADMIN_ID and text == "تعيين رابط":
         user_state[f"waiting_link_{user_id}"] = True
-        w_msg = await bot.send_message(chat_id=message.chat.id, text="ارسل يوزر / رابط القناة او الكروب\nيلا مولاي", reply_markup=ReplyKeyboardRemove())
+        w_msg = await send_animated_text(message, "ارسل يوزر / رابط القناة او الكروب\nيلا مولاي", reply_markup=ReplyKeyboardRemove())
+        asyncio.create_task(handle_reactions(message, w_msg))
         return
 
     if user_id == ADMIN_ID and user_state.get(f"waiting_link_{user_id}"):
