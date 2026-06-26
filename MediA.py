@@ -69,7 +69,7 @@ def extract_url(text):
 def get_keyboard():
     kb = ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text="تعيين رابط")],
+            [KeyboardButton(text="تعيين رابط"), KeyboardButton(text="عرض الزر")],
         ],
         resize_keyboard=True,
         one_time_keyboard=True
@@ -180,8 +180,6 @@ async def progress_updater(user_id, message_id, queue):
             break
 
 async def download_and_send(user_id, url, message):
-    asyncio.create_task(react_with_banana(message))
-
     status_msg = await send_animated_text(message, "دانفذ طلبك عزيزي انتظر بليز\nترن ترن 0%")
     await bot.send_message(chat_id=user_id, text="🍔")
     await bot.send_chat_action(chat_id=user_id, action=ChatAction.UPLOAD_VIDEO)
@@ -286,8 +284,9 @@ async def download_and_send(user_id, url, message):
             pass
             
         f_msg = await send_animated_text(message, "هوف الرابط مو مدعوم او الموقع مو\nمدعوم")
-        await bot.send_message(chat_id=user_id, text="🐈‍⬛")
+        cat_msg = await send_animated_text(message, "🐈‍⬛")
         asyncio.create_task(handle_reactions(None, f_msg))
+        asyncio.create_task(handle_reactions(None, cat_msg))
 
 async def worker(user_id):
     while user_queues.get(user_id) and len(user_queues[user_id]) > 0:
@@ -337,22 +336,39 @@ async def handle_all_messages(message: types.Message):
 
     if user_id == ADMIN_ID and text == "ادت":
         reply_markup = get_keyboard()
-        a_msg = await send_animated_text(
-            message=message, 
-            text="اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي", 
-            reply_markup=reply_markup
+        asyncio.create_task(send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي"))
+        a_msg = await bot.send_message(
+            chat_id=message.chat.id,
+            text="..",
+            reply_markup=reply_markup,
+            reply_to_message_id=message.message_id
         )
-        asyncio.create_task(handle_reactions(message, a_msg))
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=a_msg.message_id)
+        except:
+            pass
         return
 
     if user_id == ADMIN_ID and text == "تعيين رابط":
         user_state[f"waiting_link_{user_id}"] = True
-        w_msg = await send_animated_text(
-            message=message,
-            text="ارسل يوزر / رابط القناة او الكروب\nيلا مولاي",
-            reply_markup=ReplyKeyboardRemove()
+        asyncio.create_task(send_animated_text(message, "ارسل يوزر / رابط القناة او الكروب\nيلا مولاي"))
+        w_msg = await bot.send_message(
+            chat_id=message.chat.id,
+            text="..",
+            reply_markup=ReplyKeyboardRemove(),
+            reply_to_message_id=message.message_id
         )
-        asyncio.create_task(handle_reactions(message, w_msg))
+        try:
+            await bot.delete_message(chat_id=message.chat.id, message_id=w_msg.message_id)
+        except:
+            pass
+        return
+
+    if user_id == ADMIN_ID and text == "عرض الزر":
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
+        v_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
+        asyncio.create_task(handle_reactions(message, v_msg))
         return
 
     if user_id == ADMIN_ID and user_state.get(f"waiting_link_{user_id}"):
@@ -426,6 +442,8 @@ async def handle_all_messages(message: types.Message):
         s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
         asyncio.create_task(handle_reactions(message, s_msg))
         return
+
+    asyncio.create_task(react_with_banana(message))
 
     if user_id not in user_queues:
         user_queues[user_id] = []
