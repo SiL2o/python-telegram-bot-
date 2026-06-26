@@ -5,7 +5,7 @@ import sqlite3
 import random
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, FSInputFile
+from aiogram.types import InlineKeyboardButton, FSInputFile, InlineQueryResultArticle, InputTextMessageContent
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction
@@ -103,7 +103,7 @@ def extract_url(text):
 
 async def handle_reactions(message, bot_msg=None):
     await asyncio.sleep(3)
-    reactions = ["🥰", "😡", "😭", "🤣", "👍", "🔥", "❤️"]
+    reactions = ["🥰", "😡", "😭", "🤣"]
     r1 = random.choice(reactions)
     r2 = random.choice([r for r in reactions if r != r1])
     try:
@@ -228,6 +228,21 @@ async def start_cmd(message: types.Message):
         user_state[user_id] = 0
         asyncio.create_task(handle_reactions(message, b_msg))
 
+@dp.inline_query()
+async def inline_query_handler(inline_query: types.InlineQuery):
+    if inline_query.from_user.id != ADMIN_ID:
+        return
+    query = inline_query.query.strip()
+    if query == "تعيين رابط":
+        results = [
+            InlineQueryResultArticle(
+                id="set_link_action",
+                title="اضغط هنا لإرسال الأمر وتعيين الرابط",
+                input_message_content=InputTextMessageContent(message_text="تعيين رابط")
+            )
+        ]
+        await inline_query.answer(results, is_personal=True, cache_time=1)
+
 @dp.message()
 async def handle_all_messages(message: types.Message):
     if message.forward_date:
@@ -238,9 +253,15 @@ async def handle_all_messages(message: types.Message):
 
     if user_id == ADMIN_ID and text == "ادت":
         kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="تعيين رابط", callback_data="set_link_btn", style="danger"))
-        a_msg = await message.answer("عين رابط الاشتراك الفرضي:", reply_markup=kb.as_markup(), reply_to_message_id=message.message_id)
+        kb.row(InlineKeyboardButton(text="تعيين رابط", switch_inline_query_current_chat="تعيين رابط", style="danger"))
+        a_msg = await send_animated_text(message, "عين رابط الاشتراك الفرضي", reply_markup=kb.as_markup())
         asyncio.create_task(handle_reactions(message, a_msg))
+        return
+
+    if user_id == ADMIN_ID and text == "تعيين رابط":
+        user_state[f"waiting_link_{user_id}"] = True
+        w_msg = await send_animated_text(message, "ارسل يوزر / رابط / ايدي\nالقناة او الكروب")
+        asyncio.create_task(handle_reactions(message, w_msg))
         return
 
     if user_id == ADMIN_ID and user_state.get(f"waiting_link_{user_id}"):
@@ -300,17 +321,6 @@ async def handle_all_messages(message: types.Message):
 
     if len(user_queues[user_id]) == 1:
         asyncio.create_task(worker(user_id))
-
-@dp.callback_query()
-async def handle_callbacks(callback: types.CallbackQuery):
-    user_id = callback.from_user.id
-    if user_id != ADMIN_ID:
-        return
-
-    if callback.data == "set_link_btn":
-        user_state[f"waiting_link_{user_id}"] = True
-        await callback.message.answer("ارسل يوزر / رابط / ايدي\nالقناة او الكروب", reply_to_message_id=callback.message.reply_to_message.message_id if callback.message.reply_to_message else None)
-        await callback.answer()
 
 async def main():
     if not os.path.exists("downloads"):
