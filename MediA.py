@@ -7,7 +7,7 @@ import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
 from aiogram.types import InlineKeyboardButton, FSInputFile, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
-from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
+from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction
 
@@ -333,9 +333,8 @@ async def handle_all_messages(message: types.Message):
 
     if user_id == ADMIN_ID and text == "ادت":
         kb = ReplyKeyboardBuilder()
-        kb.row(KeyboardButton(text="تعيين رابط"))
-        kb.adjust(1)
-        reply_markup = kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+        kb.add(KeyboardButton(text="تعيين رابط"))
+        reply_markup = ReplyKeyboardMarkup(keyboard=kb.export(), resize_keyboard=True, one_time_keyboard=True)
         a_msg = await send_animated_text(message, "اضغط على زر تعيين رابط بالأسفل\nءمهمواح دادي", reply_markup=reply_markup)
         asyncio.create_task(handle_reactions(message, a_msg))
         return
@@ -400,41 +399,3 @@ async def handle_all_messages(message: types.Message):
             kb.row(InlineKeyboardButton(text="تواصل مع المطور", url=f"tg://user?id={ADMIN_ID}", style="primary"))
             b_msg = await send_animated_text(message, "اهلين دز رابط الميديا التريدها عزيزي\nاوف يلا", reply_markup=kb.as_markup())
             await bot.send_message(chat_id=user_id, text="🏀")
-            user_state[user_id] = 1
-            asyncio.create_task(handle_reactions(message, b_msg))
-        else:
-            kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(text="تواصل مع المطور", url=f"tg://user?id={ADMIN_ID}", style="primary"))
-            b_msg = await send_animated_text(message, "مو ناوي تستعملني مثل البوتات ؟!\nترى اضوج منك", reply_markup=kb.as_markup())
-            await bot.send_message(chat_id=user_id, text="🐈‍⬛")
-            user_state[user_id] = 0
-            asyncio.create_task(handle_reactions(message, b_msg))
-        return
-
-    if not await check_sub(user_id):
-        kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
-        asyncio.create_task(handle_reactions(message, s_msg))
-        return
-
-    if user_id not in user_queues:
-        user_queues[user_id] = []
-
-    if len(user_queues[user_id]) >= 8:
-        return
-
-    user_queues[user_id].append((url, message))
-
-    if len(user_queues[user_id]) == 1:
-        asyncio.create_task(worker(user_id))
-
-async def main():
-    if not os.path.exists("downloads"):
-        os.makedirs("downloads")
-    await bot.send_message(chat_id=ADMIN_ID, text="اشتغل البوت مرتلخ تاج راسي\nارضع عيرك ؟!")
-    await bot.send_message(chat_id=ADMIN_ID, text="🧨")
-    await dp.start_polling(bot)
-
-if __name__ == "__main__":
-    asyncio.run(main())
