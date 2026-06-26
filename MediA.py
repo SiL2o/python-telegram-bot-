@@ -3,10 +3,11 @@ import asyncio
 import re
 import sqlite3
 import random
+import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove, InlineKeyboardButton, FSInputFile
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.types import InlineKeyboardButton, FSInputFile, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.utils.keyboard import InlineKeyboardBuilder, ReplyKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction
 
@@ -135,7 +136,6 @@ async def download_and_send(user_id, url, message):
             downloaded = d.get('downloaded_bytes', 0)
             if total > 0:
                 percent = int(downloaded / total * 100)
-                import time
                 now = time.time()
                 if now - last_update_time > 2.0 or percent == 100:
                     last_update_time = now
@@ -200,7 +200,7 @@ async def start_cmd(message: types.Message):
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await bot.send_message(chat_id=message.chat.id, text="يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup(), reply_to_message_id=message.message_id)
+        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
         asyncio.create_task(handle_reactions(message, s_msg))
         return
 
@@ -224,16 +224,11 @@ async def handle_all_messages(message: types.Message):
     user_id = message.from_user.id
     text = message.text or ""
 
-        if user_id == ADMIN_ID and text == "ادت":
-        from aiogram.utils.keyboard import ReplyKeyboardBuilder
-        builder = ReplyKeyboardBuilder()
-        builder.add(KeyboardButton(text="تعيين رابط"))
-        
-        a_msg = await send_animated_text(
-            message, 
-            "عين رابط الاشتراك الفرضي من الكيبورد بالاسفل", 
-            reply_markup=builder.as_markup(resize_keyboard=True, one_time_keyboard=True)
-        )
+    if user_id == ADMIN_ID and text == "ادت":
+        kb = ReplyKeyboardBuilder()
+        kb.row(KeyboardButton(text="تعيين رابط"))
+        reply_markup = kb.as_markup(resize_keyboard=True, one_time_keyboard=True)
+        a_msg = await bot.send_message(chat_id=message.chat.id, text="اضغط على زر تعيين رابط بالأسفل مولاي", reply_markup=reply_markup, reply_to_message_id=message.message_id)
         asyncio.create_task(handle_reactions(message, a_msg))
         return
 
@@ -252,7 +247,11 @@ async def handle_all_messages(message: types.Message):
             return
         
         set_sub_link(text)
-        m2 = await send_animated_text(message, "تم تعيين رابط زر الاشتراك الفرضي\nصار مولاي")
+        
+        kb = InlineKeyboardBuilder()
+        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(text), style="success"))
+        
+        m2 = await send_animated_text(message, "تم تعيين رابط زر الاشتراك الفرضي\nصار مولاي", reply_markup=kb.as_markup())
         await bot.send_message(chat_id=message.chat.id, text="🌷", reply_to_message_id=message.message_id)
         asyncio.create_task(handle_reactions(message, m2))
         return
@@ -262,7 +261,7 @@ async def handle_all_messages(message: types.Message):
         if not await check_sub(user_id):
             kb = InlineKeyboardBuilder()
             kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-            s_msg = await bot.send_message(chat_id=message.chat.id, text="يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup(), reply_to_message_id=message.message_id)
+            s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
             asyncio.create_task(handle_reactions(message, s_msg))
             return
             
@@ -286,7 +285,7 @@ async def handle_all_messages(message: types.Message):
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
         kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
-        s_msg = await bot.send_message(chat_id=message.chat.id, text="يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup(), reply_to_message_id=message.message_id)
+        s_msg = await send_animated_text(message, "يفرض على الكل الاشتراك بالقناة\nليعمل البوت", reply_markup=kb.as_markup())
         asyncio.create_task(handle_reactions(message, s_msg))
         return
 
