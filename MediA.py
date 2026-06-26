@@ -37,6 +37,8 @@ conn.commit()
 
 user_queues = {}
 user_state = {}
+# متغير لحفظ آخر تفاعل تم استخدامه لمنع التكرار في الرسائل القادمة
+last_used_reaction = None
 
 def get_sub_link():
     cursor.execute("SELECT value FROM config WHERE key='sub_link'")
@@ -96,22 +98,35 @@ async def send_animated_text(message: types.Message, text: str, reply_markup=Non
     return msg
 
 async def handle_reactions(message: types.Message, bot_msg: types.Message = None):
+    global last_used_reaction
     if message and is_emoji_message(message):
         return
     await asyncio.sleep(3)
     
-    reactions_pool = ["🥰", "😡", "😭", "🤣"]
-    # سحب إيموجيين مختلفين تماماً بضمان عدم التكرار
-    chosen_reactions = random.sample(reactions_pool, 2)
+    # قائمة التفاعلات المطلوبة بالترتيب والتخصيص الجديد
+    reactions_pool = ["😡", "🥰", "🤣", "😭", "😘"]
+    
+    # فلترة القائمة لاستبعاد آخر تفاعل تم استخدامه في الرسالة السابقة تماماً
+    available_reactions = [r for r in reactions_pool if r != last_used_reaction]
+    if not available_reactions:
+        available_reactions = reactions_pool
+
+    # اختيار التفاعل الأول للرسالة الأولى
+    r1 = random.choice(available_reactions)
+    last_used_reaction = r1 # تحديث التاريخ للرسائل القادمة
+    
+    # اختيار تفاعل مختلف تماماً للرسالة الثانية لمنع التشابه المباشر
+    remaining_reactions = [r for r in reactions_pool if r != r1]
+    r2 = random.choice(remaining_reactions)
     
     if message:
         try:
-            await message.react([types.ReactionTypeEmoji(emoji=chosen_reactions[0])])
+            await message.react([types.ReactionTypeEmoji(emoji=r1)])
         except:
             pass
     if bot_msg:
         try:
-            await bot_msg.react([types.ReactionTypeEmoji(emoji=chosen_reactions[1])])
+            await bot_msg.react([types.ReactionTypeEmoji(emoji=r2)])
         except:
             pass
 
