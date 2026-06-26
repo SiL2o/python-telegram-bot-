@@ -121,27 +121,33 @@ async def handle_reactions(message, bot_msg=None):
         except:
             pass
 
-async def download_and_send(user_id, url, message):
+async def delayed_banana_reaction(message):
+    await asyncio.sleep(1)
     try:
         await message.react([types.ReactionTypeEmoji(emoji="🍌")])
     except:
         pass
 
-    status_msg = await bot.send_message(user_id, "دانفذ طلبك عزيزي انتظر بليز", reply_to_message_id=message.message_id)
+async def download_and_send(user_id, url, message):
+    asyncio.create_task(delayed_banana_reaction(message))
+
+    status_msg = await bot.send_message(user_id, "دانفذ طلبك عزيزي انتظر بليز | ترن ترن 0%", reply_to_message_id=message.message_id)
     await bot.send_chat_action(chat_id=user_id, action=ChatAction.UPLOAD_VIDEO)
     
-    last_update_time = 0
+    last_reported_milestone = 0
+    
     def ytdl_hook(d):
-        nonlocal last_update_time
+        nonlocal last_reported_milestone
         if d['status'] == 'downloading':
             total = d.get('total_bytes') or d.get('total_bytes_estimate', 0)
             downloaded = d.get('downloaded_bytes', 0)
             if total > 0:
                 percent = int(downloaded / total * 100)
-                now = time.time()
-                if now - last_update_time > 2.0 or percent == 100:
-                    last_update_time = now
-                    asyncio.create_task(status_msg.edit_text(f"ترن ترن {percent}%"))
+                if percent - last_reported_milestone >= 25 or percent == 100 or (last_reported_milestone == 0 and percent >= 25):
+                    last_reported_milestone = (percent // 25) * 25
+                    if percent == 100:
+                        last_reported_milestone = 100
+                    asyncio.create_task(status_msg.edit_text(f"دانفذ طلبك عزيزي انتظر بليز | ترن ترن {percent}%"))
 
     ydl_opts = {
         'outtmpl': 'downloads/%(id)s.%(ext)s',
@@ -152,9 +158,18 @@ async def download_and_send(user_id, url, message):
     loop = asyncio.get_event_loop()
     try:
         import yt_dlp
-        info = await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).extract_info(url, download=True))
-        filename = yt_dlp.YoutubeDL(ydl_opts).prepare_filename(info)
+        ydl = yt_dlp.YoutubeDL(ydl_opts)
+        info = await loop.run_in_executor(None, lambda: ydl.extract_info(url, download=True))
+        filename = ydl.prepare_filename(info)
         
+        if not os.path.exists(filename):
+            basename, _ = os.path.splitext(filename)
+            for ext in ['mp4', 'mkv', 'webm', '3gp', 'flv', 'avi']:
+                possible_file = f"{basename}.{ext}"
+                if os.path.exists(possible_file):
+                    filename = possible_file
+                    break
+
         try:
             await status_msg.delete()
         except:
@@ -175,10 +190,13 @@ async def download_and_send(user_id, url, message):
             
     except Exception as e:
         try:
-            f_msg = await status_msg.edit_text("فشل تحميل الرابط، تأكد منه مجدداً مّولاي ❌")
-            asyncio.create_task(handle_reactions(message, f_msg))
+            await status_msg.delete()
         except:
             pass
+            
+        f_msg = await send_animated_text(message, "هوف الرابط مو مدعوم او الموقع مو\nمدعوم")
+        await bot.send_message(user_id, "🐈‍⬛", reply_to_message_id=message.message_id)
+        asyncio.create_task(handle_reactions(message, f_msg))
 
 async def worker(user_id):
     while user_queues.get(user_id) and len(user_queues[user_id]) > 0:
