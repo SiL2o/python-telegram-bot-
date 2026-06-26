@@ -99,16 +99,19 @@ async def handle_reactions(message: types.Message, bot_msg: types.Message = None
     if message and is_emoji_message(message):
         return
     await asyncio.sleep(3)
-    reactions = ["🥰", "😡", "😭", "🤣"]
-    r1 = random.choice(reactions)
-    r2 = random.choice([r for r in reactions if r != r1])
-    try:
-        await message.react([types.ReactionTypeEmoji(emoji=r1)])
-    except:
-        pass
+    
+    reactions_pool = ["🥰", "😡", "😭", "🤣"]
+    # سحب إيموجيين مختلفين تماماً بضمان عدم التكرار
+    chosen_reactions = random.sample(reactions_pool, 2)
+    
+    if message:
+        try:
+            await message.react([types.ReactionTypeEmoji(emoji=chosen_reactions[0])])
+        except:
+            pass
     if bot_msg:
         try:
-            await bot_msg.react([types.ReactionTypeEmoji(emoji=r2)])
+            await bot_msg.react([types.ReactionTypeEmoji(emoji=chosen_reactions[1])])
         except:
             pass
 
