@@ -74,13 +74,14 @@ async def send_animated_text(message: types.Message, text, reply_markup=None):
     
     while idx < len(words):
         if alternate:
-            chunk = " ".join(words[idx:idx+2])
+            chunk_words = words[idx:idx+2]
             idx += 2
         else:
-            chunk = words[idx]
+            chunk_words = words[idx:idx+1]
             idx += 1
             
-        if chunk:
+        if chunk_words:
+            chunk = " ".join(chunk_words)
             current_text += " " + chunk
             try:
                 await msg.edit_text(current_text)
