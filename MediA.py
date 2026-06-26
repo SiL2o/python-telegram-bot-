@@ -6,7 +6,7 @@ import random
 import time
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import Command
-from aiogram.types import InlineKeyboardButton, FSInputFile, ReplyKeyboardRemove
+from aiogram.types import InlineKeyboardButton, FSInputFile, ReplyKeyboardRemove, InputMediaDocument
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ChatAction
@@ -17,46 +17,57 @@ ADMIN_ID = 8597653867
 bot = Bot(token=TOKEN, default=DefaultBotProperties(parse_mode="HTML"))
 dp = Dispatcher()
 
-conn = sqlite3.connect("SAve.db")
-cursor = conn.cursor()
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS config (
-    key TEXT PRIMARY KEY,
-    value TEXT
-)
-""")
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS queue (
-    id INTEGER PRIMARY KEY,
-    user_id INTEGER,
-    text TEXT,
-    status TEXT
-)
-""")
-conn.commit()
+db_lock = asyncio.Lock()
+
+def init_db():
+    conn = sqlite3.connect("SAve.db")
+    cursor = conn.cursor()
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS config (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS queue (
+        id INTEGER PRIMARY KEY,
+        user_id INTEGER,
+        text TEXT,
+        status TEXT
+    )
+    """)
+    conn.commit()
+    conn.close()
+
+init_db()
 
 user_queues = {}
 user_state = {}
-# متغير لحفظ آخر تفاعل تم استخدامه لمنع التكرار في الرسائل القادمة
 last_used_reaction = None
 
-def get_sub_link():
-    cursor.execute("SELECT value FROM config WHERE key='sub_link'")
-    row = cursor.fetchone()
-    return row[0] if row else None
+async def get_sub_link():
+    async with db_lock:
+        conn = sqlite3.connect("SAve.db")
+        cursor = conn.cursor()
+        cursor.execute("SELECT value FROM config WHERE key='sub_link'")
+        row = cursor.fetchone()
+        conn.close()
+        return row[0] if row else None
 
-def set_sub_link(val):
-    cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('sub_link', ?)", (val,))
-    conn.commit()
+async def set_sub_link(val):
+    async with db_lock:
+        conn = sqlite3.connect("SAve.db")
+        cursor = conn.cursor()
+        cursor.execute("INSERT OR REPLACE INTO config (key, value) VALUES ('sub_link', ?)", (val,))
+        conn.commit()
+        conn.close()
 
 def is_emoji_message(msg):
     if not msg:
         return False
     text = msg.text or ""
     clean_text = text.strip()
-    if not clean_text:
-        return False
-    if len(clean_text) > 4:
+    if not clean_text or len(clean_text) > 4:
         return False
     emoji_pattern = re.compile(r'^[\U00010000-\U0010ffff\u200d\u2600-\u27bf]+$')
     return bool(emoji_pattern.match(clean_text))
@@ -75,10 +86,7 @@ async def send_animated_text(message: types.Message, text: str, reply_markup=Non
     
     for i in range(0, len(words), 2):
         chunk = " ".join(words[i:i+2])
-        if current_text:
-            current_text += " " + chunk
-        else:
-            current_text = chunk
+        current_text = f"{current_text} {chunk}".strip() if current_text else chunk
             
         if msg is None:
             msg = await message.bot.send_message(
@@ -103,19 +111,14 @@ async def handle_reactions(message: types.Message, bot_msg: types.Message = None
         return
     await asyncio.sleep(3)
     
-    # قائمة التفاعلات المطلوبة بالترتيب والتخصيص الجديد
     reactions_pool = ["😡", "🥰", "🤣", "😭", "😘"]
-    
-    # فلترة القائمة لاستبعاد آخر تفاعل تم استخدامه في الرسالة السابقة تماماً
     available_reactions = [r for r in reactions_pool if r != last_used_reaction]
     if not available_reactions:
         available_reactions = reactions_pool
 
-    # اختيار التفاعل الأول للرسالة الأولى
     r1 = random.choice(available_reactions)
-    last_used_reaction = r1 # تحديث التاريخ للرسائل القادمة
+    last_used_reaction = r1
     
-    # اختيار تفاعل مختلف تماماً للرسالة الثانية لمنع التشابه المباشر
     remaining_reactions = [r for r in reactions_pool if r != r1]
     r2 = random.choice(remaining_reactions)
     
@@ -140,7 +143,7 @@ async def react_with_banana(message: types.Message):
         pass
 
 async def check_sub(user_id):
-    link = get_sub_link()
+    link = await get_sub_link()
     if not link:
         return True
     try:
@@ -151,7 +154,7 @@ async def check_sub(user_id):
         pass
     return False
 
-def format_sub_url(link):
+async def format_sub_url(link):
     if not link:
         return f"tg://user?id={ADMIN_ID}"
     if link.startswith("@"):
@@ -187,10 +190,13 @@ async def progress_updater(user_id, message_id, queue):
         except:
             break
 
-async def download_and_send(user_id, url, message):
+async def download_and_get_files(user_id, url, message):
     status_msg = await send_animated_text(message, "دانفذ طلبك عزيزي انتظر بليز\nترن ترن 0%")
     await bot.send_message(chat_id=user_id, text="🍔")
-    await bot.send_chat_action(chat_id=user_id, action=ChatAction.UPLOAD_VIDEO)
+    try:
+        await bot.send_chat_action(chat_id=user_id, action=ChatAction.UPLOAD_DOCUMENT)
+    except:
+        pass
     
     progress_queue = asyncio.Queue()
     update_task = asyncio.create_task(progress_updater(user_id, status_msg.message_id, progress_queue))
@@ -212,12 +218,12 @@ async def download_and_send(user_id, url, message):
                     loop.call_soon_threadsafe(progress_queue.put_nowait, last_reported_milestone)
 
     ydl_opts = {
-        'outtmpl': 'downloads/%%(id)s.%%(ext)s',
+        'outtmpl': 'downloads/%%(id)s_%%(title)s.%%(ext)s',
         'progress_hooks': [ytdl_hook],
         'quiet': True,
         'no_warnings': True,
         'nocheckcertificate': True,
-        'ignoreerrors': False,
+        'ignoreerrors': True,
         'http_headers': {
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
             'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
@@ -241,47 +247,49 @@ async def download_and_send(user_id, url, message):
         await progress_queue.put(-1)
         await update_task
         
-        if not info:
-            raise Exception("Extract failed")
-            
-        filename = ydl.prepare_filename(info)
-        
-        if not os.path.exists(filename):
-            basename, _ = os.path.splitext(filename)
-            for ext in ['mp4', 'mkv', 'webm', '3gp', 'flv', 'avi']:
-                possible_file = f"{basename}.{ext}"
-                if os.path.exists(possible_file):
-                    filename = possible_file
-                    break
-
-        if not os.path.exists(filename):
-            raise Exception("File not found")
-
         try:
             await bot.delete_message(chat_id=user_id, message_id=status_msg.message_id)
         except:
             pass
+
+        if not info:
+            raise Exception("Extract failed")
             
-        video_file = FSInputFile(filename)
-        v_msg = await bot.send_video(
-            chat_id=user_id, 
-            video=video_file, 
-            reply_to_message_id=message.message_id
-        )
+        downloaded_files = []
         
-        asyncio.create_task(handle_reactions(None, v_msg))
-        
-        fin_msg = await send_animated_text(message, "طلبك تنفذ بدون مشاكل يبعدكسي\nاوف بستك")
-        await bot.send_message(chat_id=user_id, text="🫦")
-        asyncio.create_task(handle_reactions(None, fin_msg))
-        
-        if os.path.exists(filename):
-            os.remove(filename)
+        if 'entries' in info:
+            for entry in info['entries']:
+                if entry:
+                    filename = ydl.prepare_filename(entry)
+                    if os.path.exists(filename):
+                        downloaded_files.append(filename)
+                    else:
+                        basename, _ = os.path.splitext(filename)
+                        for ext in ['mp4', 'mkv', 'webm', 'png', 'jpg', 'jpeg', 'webp']:
+                            possible = f"{basename}.{ext}"
+                            if os.path.exists(possible):
+                                downloaded_files.append(possible)
+                                break
+        else:
+            filename = ydl.prepare_filename(info)
+            if os.path.exists(filename):
+                downloaded_files.append(filename)
+            else:
+                basename, _ = os.path.splitext(filename)
+                for ext in ['mp4', 'mkv', 'webm', 'png', 'jpg', 'jpeg', 'webp']:
+                    possible = f"{basename}.{ext}"
+                    if os.path.exists(possible):
+                        downloaded_files.append(possible)
+                        break
+
+        if not downloaded_files:
+            raise Exception("No files found")
+            
+        return downloaded_files
             
     except Exception as e:
         await progress_queue.put(-1)
         await update_task
-        
         try:
             await bot.delete_message(chat_id=user_id, message_id=status_msg.message_id)
         except:
@@ -291,16 +299,36 @@ async def download_and_send(user_id, url, message):
         cat_msg = await send_animated_text(message, "🐈‍⬛")
         asyncio.create_task(handle_reactions(None, f_msg))
         asyncio.create_task(handle_reactions(None, cat_msg))
+        return []
 
 async def worker(user_id):
     while user_queues.get(user_id) and len(user_queues[user_id]) > 0:
         url, msg = user_queues[user_id][0]
+        
         try:
-            await asyncio.wait_for(download_and_send(user_id, url, msg), timeout=360.0)
+            files = await asyncio.wait_for(download_and_get_files(user_id, url, msg), timeout=360.0)
+            
+            if files:
+                chunk_size = 8
+                for i in range(0, len(files), chunk_size):
+                    chunk = files[i:i + chunk_size]
+                    media_group = [InputMediaDocument(media=FSInputFile(f)) for f in chunk]
+                    await bot.send_media_group(chat_id=user_id, media=media_group, reply_to_message_id=msg.message_id)
+                
+                fin_msg = await send_animated_text(msg, "طلبك تنفذ بدون مشاكل يبعدكسي\nاوف بستك")
+                await bot.send_message(chat_id=user_id, text="🫦")
+                asyncio.create_task(handle_reactions(None, fin_msg))
+                
+                for f in files:
+                    if os.path.exists(f):
+                        os.remove(f)
+                        
         except asyncio.TimeoutError:
             t_msg = await send_animated_text(msg, "انتهى مؤقت انتظار اكتمال العملية\nوتعتبر فاشلة")
             await bot.send_message(chat_id=user_id, text="🍌")
             asyncio.create_task(handle_reactions(None, t_msg))
+        except Exception as e:
+            pass
         finally:
             if user_id in user_queues and len(user_queues[user_id]) > 0:
                 user_queues[user_id].pop(0)
@@ -313,7 +341,8 @@ async def start_cmd(message: types.Message):
     user_id = message.from_user.id
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
+        sub_link = await get_sub_link()
+        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=await format_sub_url(sub_link), style="success"))
         s_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
         await bot.send_message(chat_id=user_id, text="🍔")
         asyncio.create_task(handle_reactions(message, s_msg))
@@ -353,7 +382,8 @@ async def handle_all_messages(message: types.Message):
 
     if user_id == ADMIN_ID and text == "عرض الزر":
         kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
+        sub_link = await get_sub_link()
+        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=await format_sub_url(sub_link), style="success"))
         v_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
         await bot.send_message(chat_id=message.chat.id, text="🍔")
         asyncio.create_task(handle_reactions(message, v_msg))
@@ -388,10 +418,10 @@ async def handle_all_messages(message: types.Message):
             asyncio.create_task(handle_reactions(message, err_msg))
             return
         
-        set_sub_link(text)
+        await set_sub_link(text)
         
         kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(text), style="success"))
+        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=await format_sub_url(text), style="success"))
         
         m2 = await send_animated_text(message, "تم تعيين زر الاشتراك الفرضي\nصار مولاي", reply_markup=kb.as_markup())
         await bot.send_message(chat_id=message.chat.id, text="🌷")
@@ -402,7 +432,8 @@ async def handle_all_messages(message: types.Message):
     if not url:
         if not await check_sub(user_id):
             kb = InlineKeyboardBuilder()
-            kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
+            sub_link = await get_sub_link()
+            kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=await format_sub_url(sub_link), style="success"))
             s_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
             await bot.send_message(chat_id=user_id, text="🍔")
             asyncio.create_task(handle_reactions(message, s_msg))
@@ -427,7 +458,8 @@ async def handle_all_messages(message: types.Message):
 
     if not await check_sub(user_id):
         kb = InlineKeyboardBuilder()
-        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=format_sub_url(get_sub_link()), style="success"))
+        sub_link = await get_sub_link()
+        kb.row(InlineKeyboardButton(text="اشترك بالقناة", url=await format_sub_url(sub_link), style="success"))
         s_msg = await send_animated_text(message, "اشترك بالقناة لو ماراح يشتغل وياك البوت\nضروري عيني", reply_markup=kb.as_markup())
         await bot.send_message(chat_id=user_id, text="🍔")
         asyncio.create_task(handle_reactions(message, s_msg))
